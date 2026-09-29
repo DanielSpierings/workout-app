@@ -35,6 +35,8 @@ export interface WorkoutExercise {
   notes?: string;
   /** Uitleg van de progressie-engine voor deze workout, zodat je ziet waarom. */
   suggestion?: string;
+  /** Planning uit de template (rust, superset, doel-RPE), meegenomen in de workout. */
+  plan?: ExercisePlan;
 }
 
 export interface Workout {
@@ -48,11 +50,26 @@ export interface Workout {
   source?: 'app' | 'strong';
 }
 
-export interface TemplateExercise {
-  exerciseId: string;
+export interface ExercisePlan {
+  /** Aantal werksets. */
   sets: number;
   repMin?: number;
   repMax?: number;
+  /** Aantal opwarmsets dat bij de start wordt toegevoegd (als er een werkgewicht bekend is). */
+  warmupSets?: number;
+  /** Rusttijd na een set van deze oefening; leeg = standaard uit Instellingen. */
+  restSeconds?: number;
+  /** Oefeningen met hetzelfde nummer vormen samen een superset. */
+  supersetGroup?: number;
+  /** Doel-RPE voor alle sets behalve de laatste. */
+  rpe?: number;
+  /** Doel-RPE voor de laatste set. */
+  lastSetRpe?: number;
+  notes?: string;
+}
+
+export interface TemplateExercise extends ExercisePlan {
+  exerciseId: string;
 }
 
 export interface Template {
@@ -60,6 +77,8 @@ export interface Template {
   name: string;
   exercises: TemplateExercise[];
   updatedAt: number;
+  /** Programma waar deze template bij hoort (bij import). */
+  program?: string;
 }
 
 export interface Settings {

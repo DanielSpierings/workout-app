@@ -4,7 +4,7 @@ import type { Workout } from '../types';
 import { toast } from '../components/Toast';
 import { formatDuration, formatNumber } from '../lib/format';
 import { isWorkingSet, prsInWorkout, workoutVolume } from '../lib/stats';
-import { templateFromWorkout } from '../lib/workouts';
+import { addedExercises, templateFromWorkout } from '../lib/workouts';
 
 export function WorkoutSummary({ workout, onClose }: { workout: Workout; onClose: () => void }) {
   const all = useLiveQuery(() => db.workouts.toArray(), []) ?? [];
@@ -13,12 +13,18 @@ export function WorkoutSummary({ workout, onClose }: { workout: Workout; onClose
   const prs = prsInWorkout(workout, all);
   const sets = workout.exercises.reduce((n, e) => n + e.sets.filter(isWorkingSet).length, 0);
 
+  const added = template ? addedExercises(workout, template) : [];
+
   const saveTemplate = async () => {
-    const t = templateFromWorkout(workout, template?.id ?? uid());
-    if (template) t.name = template.name;
+    if (template) {
+      await db.templates.put({ ...template, exercises: [...template.exercises, ...added], updatedAt: Date.now() });
+      toast(`${added.length} oefening(en) toegevoegd aan “${template.name}”.`);
+      return;
+    }
+    const t = templateFromWorkout(workout, uid());
     await db.templates.put(t);
-    if (!template) await db.workouts.update(workout.id, { templateId: t.id });
-    toast(template ? 'Template bijgewerkt.' : 'Opgeslagen als template.');
+    await db.workouts.update(workout.id, { templateId: t.id });
+    toast('Opgeslagen als template.');
   };
 
   return (
@@ -47,7 +53,11 @@ export function WorkoutSummary({ workout, onClose }: { workout: Workout; onClose
         </>
       )}
       <div className="stack" style={{ marginTop: 20 }}>
-        <button className="btn block" onClick={saveTemplate}>{template ? `Template “${template.name}” bijwerken` : 'Opslaan als template'}</button>
+        {(!workout.templateId || added.length > 0) && (
+          <button className="btn block" onClick={saveTemplate}>
+            {template ? `${added.length} nieuwe oefening(en) toevoegen aan “${template.name}”` : 'Opslaan als template'}
+          </button>
+        )}
         <button className="btn primary block" onClick={onClose}>Klaar</button>
       </div>
     </>

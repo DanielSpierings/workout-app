@@ -48,6 +48,14 @@ describe('suggestProgression', () => {
   it('verhoogt onderlichaam met ~5%', () => {
     const s = suggestProgression(squat, [session(3, 100, [10, 10, 10])], opts);
     expect(s.targets[0].weight).toBe(105);
+    expect(s.explanation).toContain('+5 kg (~5%)');
+  });
+
+  it('noemt het echte percentage als de kleinste gewichtsstap groter is', () => {
+    const db = { ...bench, equipment: 'dumbbell' as const, repMin: 12, repMax: 15 };
+    const s = suggestProgression(db, [session(3, 10, [15, 15])], opts);
+    expect(s.targets[0].weight).toBe(12);
+    expect(s.explanation).toContain('kleinste gewichtsstap, ~20%');
   });
 
   it('springt verder via e1RM als het veel te makkelijk was, maar maximaal +10%', () => {
@@ -110,6 +118,32 @@ describe('suggestProgression', () => {
     const s = suggestProgression(bench, [session(3, 80, [8, 8])], { ...opts, sets: 4 });
     expect(s.targets).toHaveLength(4);
     expect(s.targets[3].reps).toBe(9);
+  });
+
+  describe('met geplande RPE uit een programma', () => {
+    const toFailure = { ...opts, plannedRpe: { early: 9, last: 10 } };
+
+    it('verhoogt als de laatste set gepland tot falen ging (RPE 10)', () => {
+      const s = suggestProgression(bench, [session(3, 80, [10, 10, 10], 9)], toFailure);
+      const last = session(3, 80, [10, 10, 10]);
+      last.sets = last.sets.map((x, i) => ({ ...x, rpe: i === 2 ? 10 : 9 }));
+      const s2 = suggestProgression(bench, [last], toFailure);
+      expect(s.action).toBe('increase');
+      expect(s2.action).toBe('increase');
+      expect(s2.explanation).toContain('Doel-RPE 9, laatste set 10');
+    });
+
+    it('houdt vast als sets duidelijk zwaarder voelden dan gepland', () => {
+      const s = suggestProgression(bench, [session(3, 80, [10, 10, 10], 9)], { ...opts, plannedRpe: { early: 7, last: 8 } });
+      expect(s.action).toBe('hold');
+      expect(s.explanation).toContain('zwaarder dan gepland');
+    });
+
+    it('gebruikt de geplande RPE in het advies bij herhalingen erbij', () => {
+      const s = suggestProgression(bench, [session(3, 80, [8, 8, 7])], { ...opts, plannedRpe: { early: 7, last: 8 } });
+      expect(s.action).toBe('reps');
+      expect(s.explanation).toContain('Doel-RPE 7, laatste set 8');
+    });
   });
 
   it('rondt af op de gewichtsstap', () => {

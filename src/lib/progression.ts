@@ -45,6 +45,11 @@ export interface ProgressionOptions {
   sets?: number;
   repMin?: number;
   repMax?: number;
+  /**
+   * Geplande RPE uit een programma. Een programma kan bewust tot falen plannen
+   * (laatste set RPE 10); dan telt alleen RPE die hoger uitvalt dan gepland als "te zwaar".
+   */
+  plannedRpe?: { early: number; last: number };
   now?: number;
 }
 
@@ -58,6 +63,14 @@ export function roundTo(value: number, step: number): number {
 
 function fmt(kg: number): string {
   return `${Number(kg.toFixed(2)).toString().replace('.', ',')} kg`;
+}
+
+function reserve(rir: number): string {
+  return `${fmtRpe(rir)} ${rir === 1 ? 'herhaling' : 'herhalingen'}`;
+}
+
+function fmtRpe(n: number): string {
+  return Number(n.toFixed(1)).toString().replace('.', ',');
 }
 
 function same(a: number, b: number): boolean {
@@ -87,8 +100,14 @@ export function suggestProgression(
 ): Suggestion {
   const repMin = opts.repMin ?? exercise.repMin;
   const repMax = Math.max(opts.repMax ?? exercise.repMax, repMin);
-  const rir = opts.targetRir;
-  const targetRpe = 10 - rir;
+  const planned = opts.plannedRpe;
+  const targetRpe = planned?.early ?? 10 - opts.targetRir;
+  const rir = 10 - targetRpe;
+  const effortHint = planned
+    ? planned.last !== planned.early
+      ? `Doel-RPE ${fmtRpe(planned.early)}, laatste set ${fmtRpe(planned.last)}.`
+      : `Doel-RPE ${fmtRpe(planned.early)}.`
+    : `Stop met ~${reserve(rir)} in reserve.`;
   const now = opts.now ?? Date.now();
   const step = exercise.increment ?? DEFAULT_INCREMENT[exercise.equipment];
   const pct = exercise.lowerBody ? 0.05 : 0.025;
@@ -100,7 +119,7 @@ export function suggestProgression(
       targets: repeat(opts.sets ?? 3, { weight: null, reps: repMin }),
       explanation:
         `Eerste keer: kies een gewicht waarmee je ${repMin}–${repMax} herhalingen haalt ` +
-        `met nog ~${rir} herhalingen in reserve (RPE ${targetRpe}). Begin liever iets te licht.`,
+        `met nog ~${reserve(rir)} in reserve (RPE ${fmtRpe(targetRpe)}). Begin liever iets te licht.`,
     };
   }
 
@@ -110,7 +129,11 @@ export function suggestProgression(
   const reps = top.map((s) => s.reps ?? 0);
   const minReps = Math.min(...reps);
   const rpe = averageRpe(last, W);
-  const tooHard = rpe != null && rpe >= 9.5;
+  // Zonder planning: RPE ≥ 9,5 is te zwaar om te verhogen. Met planning: een set die
+  // minstens 1 punt zwaarder voelde dan gepland.
+  const tooHard = planned
+    ? top.some((s, i) => s.rpe != null && s.rpe >= (i === top.length - 1 ? planned.last : planned.early) + 1)
+    : rpe != null && rpe >= 9.5;
   const bodyweightOnly = W <= 0;
 
   // Terugkeer na een lange pauze.
@@ -169,7 +192,11 @@ export function suggestProgression(
       };
     }
     let weight = roundTo(W + Math.max(step, W * pct), step);
-    let why = `Alle werksets op ${repMax}+ herhalingen: +${fmt(weight - W)} (${exercise.lowerBody ? '~5%' : '~2,5%'}, minimaal één stap).`;
+    const actual = Math.round(((weight - W) / W) * 100);
+    const minimalStep = step > W * pct;
+    let why =
+      `Alle werksets op ${repMax}+ herhalingen: +${fmt(weight - W)} ` +
+      (minimalStep ? `(kleinste gewichtsstap, ~${actual}%).` : `(${exercise.lowerBody ? '~5%' : '~2,5%'}).`);
     const overshoot = minReps >= repMax + 2 && (rpe == null || rpe <= targetRpe);
     if (overshoot) {
       // Terugrekenen vanuit geschatte 1RM naar ondergrens + RIR, maximaal +10%.
@@ -188,7 +215,7 @@ export function suggestProgression(
     return {
       action: 'increase',
       targets: repeat(setCount, { weight, reps: targetReps }),
-      explanation: `${why} Doel: ${targetReps} herhalingen per set (geschat via je 1RM), daarna weer opbouwen richting ${repMax}.`,
+      explanation: `${why} Doel: ${targetReps} herhalingen per set (geschat via je 1RM), daarna weer opbouwen richting ${repMax}.${planned ? ` ${effortHint}` : ''}`,
     };
   }
 
@@ -212,10 +239,9 @@ export function suggestProgression(
     action: tooHard ? 'hold' : 'reps',
     targets,
     explanation: tooHard
-      ? `Vorige keer was zwaar (RPE ${rpe!.toFixed(1).replace('.', ',')}). Zelfde gewicht en herhalingen; ` +
-        `mik op RPE ${targetRpe}.`
+      ? `Vorige keer was zwaarder dan gepland (gem. RPE ${fmtRpe(rpe ?? 10)}). Zelfde gewicht en herhalingen. ${effortHint}`
       : `Zelfde gewicht (${bodyweightOnly ? 'lichaamsgewicht' : fmt(W)}), één herhaling meer per set ` +
-        `richting ${repMax}. Stop met ~${rir} herhalingen in reserve.`,
+        `richting ${repMax}. ${effortHint}`,
   };
 }
 

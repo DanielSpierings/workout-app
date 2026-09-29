@@ -9,6 +9,7 @@ Een offline webapp (PWA) voor krachttraining, als alternatief voor Strong. Gemaa
 - **Templates**: routines met aantal sets en eventueel een eigen herhalingsbereik per oefening. Je kunt ook een afgeronde workout opslaan als template, of hem herhalen.
 - **Progressive overload**: bij het starten van een workout vult de app per oefening een voorstel in voor gewicht en herhalingen, met uitleg waarom (zie hieronder).
 - **Geschiedenis en statistieken**: records (zwaarste gewicht, geschatte 1RM, volume), grafieken per oefening, PR's per workout en werksets per spiergroep per week.
+- **Programma-import**: een trainingsprogramma als JSON-bestand (bijvoorbeeld gemaakt in Cowork) wordt een set templates, met sets, herhalingen, doel-RPE, rust per oefening, opwarmsets en supersets. Zie [Programma's importeren](#programmas-importeren).
 - **Strong-import**: zowel de oude export (puntkomma, lbs/kg-kolom) als de nieuwe (`Weight (kg)`, `Duration (sec)`, regels voor de rusttimer). Opnieuw importeren is veilig.
 - **Back-up**: JSON-back-up maken en terugzetten, en exporteren als CSV.
 - **Werkt offline** dankzij een service worker. Staat de app op je beginscherm, dan werkt hij als een gewone app.
@@ -50,12 +51,60 @@ Oefeningen met een bekende Strong-naam (bv. "Bench Press (Barbell)") worden auto
 
 > **Let op:** de gegevens staan alleen op dit toestel, in de opslag van de browser. Maak af en toe een back-up via Instellingen, vooral voordat je de app of Safari-gegevens verwijdert.
 
+## Programma's importeren
+
+**Instellingen → Programma (JSON) kiezen.** Je ziet eerst een voorbeeld waarin elke oefeningnaam aan een oefening uit je bibliotheek wordt gekoppeld. Klopt een koppeling niet, kies dan een andere, of laat een nieuwe oefening aanmaken. Koppel waar mogelijk aan een bestaande oefening, zodat je geschiedenis en de progressievoorstellen doorlopen. Opnieuw importeren werkt de templates van dat programma bij in plaats van ze te dupliceren.
+
+Formaat (`schema_version: 1`):
+
+```json
+{
+  "schema_version": 1,
+  "program": { "name": "Mijn programma" },
+  "workouts": [
+    {
+      "id": "dag-a",
+      "name": "Dag A",
+      "exercises": [
+        {
+          "order": 1,
+          "name": "Leg Press",
+          "working_sets": 3,
+          "reps": { "min": 6, "max": 8 },
+          "warmup_sets": { "min": 2, "max": 3 },
+          "early_set_rpe": { "min": 7, "max": 7 },
+          "last_set_rpe": { "min": 8, "max": 8 },
+          "rest_seconds": { "min": 120, "max": 180 },
+          "superset_group": null,
+          "last_set_technique": null,
+          "substitutions": ["Dumbbell Lunge"],
+          "note": "Optionele toelichting"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Verplicht zijn `schema_version`, `program.name`, en per workout `name` en `exercises`, met per oefening `name`, `working_sets` en `reps`. Hoe de rest wordt gebruikt:
+
+| Veld | In de app |
+|---|---|
+| `reps` | herhalingsbereik voor de progressie (dubbele progressie) |
+| `early_set_rpe`, `last_set_rpe` | doel-RPE (midden van het bereik); de progressie telt alleen RPE die minstens 1 punt hoger uitvalt dan gepland als "te zwaar", zodat een geplande RPE 10 op de laatste set verhogen niet blokkeert |
+| `rest_seconds` | rusttimer na een set van deze oefening (ondergrens van het bereik; met +15 s verleng je) |
+| `warmup_sets` | aantal opwarmsets (ondergrens) dat bij de start wordt toegevoegd zodra er een werkgewicht bekend is |
+| `superset_group` | oefeningen met hetzelfde nummer worden als superset A, B, … getoond |
+| `note`, `substitutions`, `last_set_technique` | als notitie bij de oefening |
+
+Andere velden (zoals `source`, `warmup_protocol`, `deload`) worden genegeerd. De deload-planning van een programma voert de app niet automatisch uit; de engine doet wel zelf een deload bij stagnatie.
+
 ## Ontwikkelen
 
 ```bash
 npm install
 npm run dev        # ontwikkelserver
-npm test           # unittests (progressie-engine, CSV/Strong-import)
+npm test           # unittests (progressie-engine, Strong- en programma-import, templates)
 npm run build      # productie-build in dist/
 ```
 

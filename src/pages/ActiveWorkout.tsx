@@ -9,6 +9,7 @@ import { RestTimer, unlockAudio, type RestState } from '../components/RestTimer'
 import { Sheet } from '../components/Sheet';
 import { toast } from '../components/Toast';
 import { formatClock, formatNumber } from '../lib/format';
+import { describePlan, supersetLabel } from '../lib/plan';
 import { exerciseSessions } from '../lib/stats';
 import { buildExercise, finishWorkout, warmupSets } from '../lib/workouts';
 
@@ -92,7 +93,8 @@ export function ActiveWorkout({ initial, settings, onFinished }: { initial: Work
     }
     unlockAudio();
     updateSet(i, si, { done: !set.done, weight: set.weight ?? 0 });
-    if (!set.done && set.type !== 'warmup') setRest({ endsAt: Date.now() + settings.restSeconds * 1000, total: settings.restSeconds });
+    const restSeconds = w.exercises[i].plan?.restSeconds ?? settings.restSeconds;
+    if (!set.done && set.type !== 'warmup') setRest({ endsAt: Date.now() + restSeconds * 1000, total: restSeconds });
   };
 
   const addSet = (i: number) =>
@@ -165,9 +167,14 @@ export function ActiveWorkout({ initial, settings, onFinished }: { initial: Work
           return (
             <div className="card exercise-card" key={`${e.exerciseId}-${i}`}>
               <div className="spread">
-                <h3 className="truncate" onClick={() => { location.hash = `#/exercises/${e.exerciseId}`; }}>{ex?.name ?? e.exerciseId}</h3>
+                <h3 className="truncate" onClick={() => { location.hash = `#/exercises/${e.exerciseId}`; }}>
+                  {e.plan?.supersetGroup != null && <span className="badge" style={{ marginRight: 6 }}>Superset {supersetLabel(e.plan.supersetGroup)}</span>}
+                  {ex?.name ?? e.exerciseId}
+                </h3>
                 <button className="btn ghost small" onClick={() => setMenu(i)} aria-label="Opties">•••</button>
               </div>
+              {e.plan && <div className="small muted" style={{ marginTop: 2 }}>{describePlan(e.plan, ex)}</div>}
+              {e.plan?.notes && <div className="small muted" style={{ marginTop: 2 }}>{e.plan.notes}</div>}
               {text && (
                 <div className={`suggestion ${action}`}>
                   <b>{ACTION_TITLE[action] ?? 'Advies'}</b>
@@ -236,7 +243,7 @@ export function ActiveWorkout({ initial, settings, onFinished }: { initial: Work
             const ex = byId.get(block.exerciseId);
             if (!first || !ex) return toast('Vul eerst een werkgewicht in.');
             const step = ex.increment ?? DEFAULT_INCREMENT[ex.equipment];
-            updateExercise(menu, (x) => ({ ...x, sets: [...warmupSets(first.weight!, step), ...x.sets.filter((s) => s.type !== 'warmup')] }));
+            updateExercise(menu, (x) => ({ ...x, sets: [...warmupSets(first.weight!, step, block.plan?.warmupSets || 3), ...x.sets.filter((s) => s.type !== 'warmup')] }));
             setMenu(null);
           }}
           onNote={() => { updateExercise(menu, (x) => ({ ...x, notes: x.notes ?? '' })); setMenu(null); }}
@@ -261,7 +268,7 @@ function ExerciseMenu(props: {
 }) {
   return (
     <Sheet title={props.exercise?.name ?? 'Oefening'} onClose={props.onClose}>
-      <div className="list-item" onClick={props.onWarmup}>Opwarmsets toevoegen (40/60/80%)</div>
+      <div className="list-item" onClick={props.onWarmup}>Opwarmsets toevoegen{props.block.plan?.warmupSets ? ` (${props.block.plan.warmupSets})` : ''}</div>
       <div className="list-item" onClick={props.onNote}>Notitie toevoegen</div>
       <div className="list-item" onClick={props.onUp}>Omhoog verplaatsen</div>
       <div className="list-item" onClick={props.onDown}>Omlaag verplaatsen</div>

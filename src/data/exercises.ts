@@ -133,10 +133,10 @@ export const DEFAULT_INCREMENT: Record<Equipment, number> = {
 
 /** Probeert spiergroep en uitrusting af te leiden uit een onbekende Strong-naam. */
 export function guessExercise(name: string): Pick<Exercise, 'muscle' | 'equipment' | 'lowerBody' | 'repMin' | 'repMax'> {
-  const n = name.toLowerCase();
+  const n = name.toLowerCase().replace(/[-_]/g, ' ');
   const equipment: Equipment = n.includes('barbell') ? 'barbell'
     : n.includes('dumbbell') ? 'dumbbell'
-    : n.includes('machine') || n.includes('smith') || n.includes('leg press') ? 'machine'
+    : n.includes('machine') || n.includes('smith') || n.includes('leg press') || n.includes('pec deck') ? 'machine'
     : n.includes('cable') ? 'cable'
     : n.includes('kettlebell') ? 'kettlebell'
     : n.includes('band') || n.includes('assisted') || n.includes('bodyweight') ? 'bodyweight'
@@ -148,6 +148,7 @@ export function guessExercise(name: string): Pick<Exercise, 'muscle' | 'equipmen
     [/squat|leg press|lunge|leg extension|step up|split/, 'quads'],
     [/deadlift|row|pull ?up|chin ?up|pulldown|shrug|back extension|pullover/, 'back'],
     [/tricep|skull|pushdown/, 'triceps'],
+    [/reverse (pec|fly)|rear delt/, 'shoulders'],
     [/bench|chest|fly|push ?up|pec|dip/, 'chest'],
     [/overhead|shoulder|lateral|front raise|face pull|reverse fly|arnold|upright/, 'shoulders'],
     [/curl/, 'biceps'],

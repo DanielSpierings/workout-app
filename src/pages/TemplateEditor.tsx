@@ -4,6 +4,7 @@ import { db, uid } from '../db';
 import type { Template } from '../types';
 import { ExercisePicker } from '../components/ExercisePicker';
 import { NumInput } from '../components/NumInput';
+import { supersetLabel } from '../lib/plan';
 import { back, go } from '../router';
 
 export function TemplateEditor({ id }: { id: string }) {
@@ -55,7 +56,10 @@ export function TemplateEditor({ id }: { id: string }) {
           return (
             <div key={i} className="card">
               <div className="spread">
-                <h3 className="truncate">{ex?.name ?? e.exerciseId}</h3>
+                <h3 className="truncate">
+                  {e.supersetGroup != null && <span className="badge" style={{ marginRight: 6 }}>Superset {supersetLabel(e.supersetGroup)}</span>}
+                  {ex?.name ?? e.exerciseId}
+                </h3>
                 <div className="row">
                   <button className="btn small" onClick={() => move(i, -1)} aria-label="Omhoog">↑</button>
                   <button className="btn small" onClick={() => move(i, 1)} aria-label="Omlaag">↓</button>
@@ -67,6 +71,17 @@ export function TemplateEditor({ id }: { id: string }) {
                 <div className="grow"><label className="lbl">Min. reps</label><NumInput className="field" decimal={false} value={e.repMin} placeholder={String(ex?.repMin ?? '')} onChange={(v) => patch(i, { repMin: v ?? undefined })} /></div>
                 <div className="grow"><label className="lbl">Max. reps</label><NumInput className="field" decimal={false} value={e.repMax} placeholder={String(ex?.repMax ?? '')} onChange={(v) => patch(i, { repMax: v ?? undefined })} /></div>
               </div>
+              <div className="row" style={{ marginTop: 8 }}>
+                <div className="grow"><label className="lbl">Rust (s)</label><NumInput className="field" decimal={false} value={e.restSeconds} placeholder="standaard" onChange={(v) => patch(i, { restSeconds: v || undefined })} /></div>
+                <div className="grow"><label className="lbl">Opwarmsets</label><NumInput className="field" decimal={false} value={e.warmupSets} placeholder="0" onChange={(v) => patch(i, { warmupSets: v ? Math.min(v, 4) : undefined })} /></div>
+                <div className="grow">
+                  <label className="lbl">RPE (laatste)</label>
+                  <div className="field" style={{ display: 'flex', alignItems: 'center', color: 'var(--muted)' }}>
+                    {e.rpe != null ? `${String(e.rpe).replace('.', ',')}${e.lastSetRpe != null && e.lastSetRpe !== e.rpe ? ` → ${String(e.lastSetRpe).replace('.', ',')}` : ''}` : '–'}
+                  </div>
+                </div>
+              </div>
+              {e.notes && <p className="small muted" style={{ margin: '8px 0 0' }}>{e.notes}</p>}
             </div>
           );
         })}

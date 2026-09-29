@@ -2,13 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { db, requestPersistentStorage } from '../db';
 import type { Settings } from '../types';
 import { NumInput } from '../components/NumInput';
+import { ProgramImport } from '../components/ProgramImport';
 import { toast } from '../components/Toast';
 import { download, exportBackup, exportCsv, importStrong, restoreBackup, type Backup } from '../lib/backup';
+import { analyzeProgram, type ProgramAnalysis } from '../lib/programImport';
 import { REFERENCES } from '../lib/progression';
 
 export function SettingsPage({ settings }: { settings: Settings }) {
   const strongInput = useRef<HTMLInputElement>(null);
   const backupInput = useRef<HTMLInputElement>(null);
+  const programInput = useRef<HTMLInputElement>(null);
+  const [analysis, setAnalysis] = useState<ProgramAnalysis | null>(null);
   const [busy, setBusy] = useState(false);
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const set = (p: Partial<Settings>) => db.settings.put({ ...settings, ...p });
@@ -29,9 +33,21 @@ export function SettingsPage({ settings }: { settings: Settings }) {
     }
   };
 
+  const onProgram = async (file: File) => {
+    try {
+      setAnalysis(analyzeProgram(JSON.parse(await file.text()), await db.exercises.toArray()));
+    } catch (e) {
+      toast(`Programma niet ingelezen: ${e instanceof SyntaxError ? 'geen geldig JSON-bestand' : (e as Error).message}`);
+    }
+  };
+
   const onBackup = async (file: File) => {
     try {
       const b = JSON.parse(await file.text()) as Backup;
+      if ('schema_version' in b && 'workouts' in b && 'program' in b) {
+        setAnalysis(analyzeProgram(b, await db.exercises.toArray()));
+        return;
+      }
       if (!confirm(`Back-up van ${b.exportedAt?.slice(0, 10)} terugzetten? Bestaande items met hetzelfde ID worden overschreven.`)) return;
       await restoreBackup(b);
       toast('Back-up teruggezet.');
@@ -102,6 +118,14 @@ export function SettingsPage({ settings }: { settings: Settings }) {
           <button className="btn primary block" disabled={busy} onClick={() => strongInput.current?.click()}>{busy ? 'Bezig…' : 'Strong CSV kiezen'}</button>
           <input ref={strongInput} type="file" accept=".csv,text/csv,text/comma-separated-values" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onStrong(f); }} />
         </div>
+        <div>
+          <b>Programma importeren</b>
+          <p className="small muted" style={{ margin: '4px 0 8px' }}>
+            Een trainingsprogramma als JSON-bestand (schema_version 1), bijvoorbeeld gemaakt in Cowork. Elke workout wordt een template, met sets, herhalingen, RPE, rust, opwarmsets en supersets.
+          </p>
+          <button className="btn block" onClick={() => programInput.current?.click()}>Programma (JSON) kiezen</button>
+          <input ref={programInput} type="file" accept=".json,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onProgram(f); }} />
+        </div>
         <div className="row">
           <button className="btn grow" onClick={async () => download(`workout-backup-${stamp}.json`, JSON.stringify(await exportBackup()), 'application/json')}>Back-up maken</button>
           <button className="btn grow" onClick={() => backupInput.current?.click()}>Back-up terugzetten</button>
@@ -116,6 +140,7 @@ export function SettingsPage({ settings }: { settings: Settings }) {
         </p>
       </div>
       <p className="small muted" style={{ textAlign: 'center', marginTop: 24 }}>Workout · versie {__APP_VERSION__}</p>
+      {analysis && <ProgramImport analysis={analysis} onClose={() => setAnalysis(null)} />}
     </>
   );
 }

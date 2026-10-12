@@ -1,21 +1,49 @@
 import { useEffect, useState } from 'react';
 
-let push: ((msg: string) => void) | null = null;
+interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
 
-export function toast(msg: string): void {
-  push?.(msg);
+interface Message {
+  text: string;
+  action?: ToastAction;
+}
+
+let push: ((m: Message) => void) | null = null;
+
+/** Korte melding bovenin; optioneel met een actie zoals "Ongedaan maken". */
+export function toast(text: string, action?: ToastAction): void {
+  push?.({ text, action });
 }
 
 export function ToastHost() {
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<Message | null>(null);
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
     push = (m) => {
       setMsg(m);
       clearTimeout(t);
-      t = setTimeout(() => setMsg(null), 3500);
+      t = setTimeout(() => setMsg(null), m.action ? 5000 : 3500);
     };
     return () => { push = null; clearTimeout(t); };
   }, []);
-  return msg ? <div className="toast" onClick={() => setMsg(null)}>{msg}</div> : null;
+  if (!msg) return null;
+  return (
+    <div className="toast" role="status" onClick={() => setMsg(null)}>
+      <span className="grow">{msg.text}</span>
+      {msg.action && (
+        <button
+          className="btn ghost small"
+          onClick={(e) => {
+            e.stopPropagation();
+            msg.action!.onClick();
+            setMsg(null);
+          }}
+        >
+          {msg.action.label}
+        </button>
+      )}
+    </div>
+  );
 }

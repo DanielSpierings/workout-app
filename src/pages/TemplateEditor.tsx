@@ -2,8 +2,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
 import { db, uid } from '../db';
 import type { Template } from '../types';
+import { confirmDialog } from '../components/Confirm';
 import { ExercisePicker } from '../components/ExercisePicker';
 import { NumInput } from '../components/NumInput';
+import { IconPlus } from '../components/Icons';
 import { supersetLabel } from '../lib/plan';
 import { back, go } from '../router';
 
@@ -35,7 +37,7 @@ export function TemplateEditor({ id }: { id: string }) {
     go('workout');
   };
   const remove = async () => {
-    if (!confirm(`Template “${t.name}” verwijderen?`)) return;
+    if (!(await confirmDialog({ title: `Template “${t.name}” verwijderen?`, confirmLabel: 'Verwijderen', danger: true }))) return;
     await db.templates.delete(t.id);
     go('workout');
   };
@@ -72,20 +74,35 @@ export function TemplateEditor({ id }: { id: string }) {
                 <div className="grow"><label className="lbl">Max. reps</label><NumInput className="field" decimal={false} value={e.repMax} placeholder={String(ex?.repMax ?? '')} onChange={(v) => patch(i, { repMax: v ?? undefined })} /></div>
               </div>
               <div className="row" style={{ marginTop: 8 }}>
-                <div className="grow"><label className="lbl">Rust (s)</label><NumInput className="field" decimal={false} value={e.restSeconds} placeholder="standaard" onChange={(v) => patch(i, { restSeconds: v || undefined })} /></div>
-                <div className="grow"><label className="lbl">Opwarmsets</label><NumInput className="field" decimal={false} value={e.warmupSets} placeholder="0" onChange={(v) => patch(i, { warmupSets: v ? Math.min(v, 4) : undefined })} /></div>
                 <div className="grow">
-                  <label className="lbl">RPE (laatste)</label>
-                  <div className="field" style={{ display: 'flex', alignItems: 'center', color: 'var(--muted)' }}>
-                    {e.rpe != null ? `${String(e.rpe).replace('.', ',')}${e.lastSetRpe != null && e.lastSetRpe !== e.rpe ? ` → ${String(e.lastSetRpe).replace('.', ',')}` : ''}` : '–'}
+                  <label className="lbl">{e.supersetGroup != null ? 'Rust tussen (s)' : 'Rust (s)'}</label>
+                  <NumInput className="field" decimal={false} value={e.restSeconds} placeholder="standaard" onChange={(v) => patch(i, { restSeconds: v || undefined })} />
+                </div>
+                {e.supersetGroup != null && (
+                  <div className="grow">
+                    <label className="lbl">Na ronde (s)</label>
+                    <NumInput className="field" decimal={false} value={e.roundRestSeconds} placeholder="standaard" onChange={(v) => patch(i, { roundRestSeconds: v || undefined })} />
                   </div>
+                )}
+                <div className="grow">
+                  <label className="lbl">Opwarmset</label>
+                  <select className="field" value={e.warmupSets == null ? 'auto' : e.warmupSets > 0 ? 'yes' : 'no'} onChange={(ev) => patch(i, { warmupSets: ev.target.value === 'auto' ? undefined : ev.target.value === 'yes' ? 1 : 0 })}>
+                    <option value="auto">Auto</option>
+                    <option value="yes">Ja</option>
+                    <option value="no">Nee</option>
+                  </select>
                 </div>
               </div>
+              {e.rpe != null && (
+                <p className="small muted" style={{ margin: '8px 0 0' }}>
+                  Doel-RPE {String(e.rpe).replace('.', ',')}{e.lastSetRpe != null && e.lastSetRpe !== e.rpe ? `, laatste set ${String(e.lastSetRpe).replace('.', ',')}` : ''}
+                </p>
+              )}
               {e.notes && <p className="small muted" style={{ margin: '8px 0 0' }}>{e.notes}</p>}
             </div>
           );
         })}
-        <button className="btn primary block" onClick={() => setPicker(true)}>+ Oefening toevoegen</button>
+        <button className="btn primary block" onClick={() => setPicker(true)}><IconPlus size={18} /> Oefening toevoegen</button>
         {!isNew && <button className="btn danger block" onClick={remove}>Template verwijderen</button>}
       </div>
       {picker && (

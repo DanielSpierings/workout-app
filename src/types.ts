@@ -17,6 +17,8 @@ export interface Exercise {
   repMin: number;
   repMax: number;
   custom?: boolean;
+  /** Automatische opwarmset: leeg = alleen bij compound-oefeningen, true = altijd, false = nooit. */
+  warmup?: boolean;
 }
 
 export type SetType = 'normal' | 'warmup' | 'drop' | 'failure';
@@ -27,6 +29,8 @@ export interface WorkoutSet {
   rpe?: number | null;
   type: SetType;
   done: boolean;
+  /** Door de app berekende opwarmset die meebeweegt met het werkgewicht. */
+  auto?: boolean;
 }
 
 export interface WorkoutExercise {
@@ -57,8 +61,11 @@ export interface ExercisePlan {
   repMax?: number;
   /** Aantal opwarmsets dat bij de start wordt toegevoegd (als er een werkgewicht bekend is). */
   warmupSets?: number;
-  /** Rusttijd na een set van deze oefening; leeg = standaard uit Instellingen. */
+  /** Rusttijd na een set van deze oefening; leeg = standaard uit Instellingen.
+   *  In een superset: de rust tussen deze oefening en de volgende. */
   restSeconds?: number;
+  /** In een superset: rust na de laatste oefening van de ronde; leeg = standaard. */
+  roundRestSeconds?: number;
   /** Oefeningen met hetzelfde nummer vormen samen een superset. */
   supersetGroup?: number;
   /** Doel-RPE voor alle sets behalve de laatste. */
@@ -81,19 +88,30 @@ export interface Template {
   program?: string;
 }
 
+export type SoundKind = 'bell' | 'bowl' | 'chime';
+export type Theme = 'auto' | 'light' | 'dark';
+
 export interface Settings {
   id: 'settings';
+  /** Standaard rust bij compound-oefeningen. */
   restSeconds: number;
+  /** Standaard rust bij isolatie-oefeningen. */
+  restIsolationSeconds: number;
   /** Beoogde herhalingen in reserve (RIR) op werksets. */
   targetRir: number;
   progressionEnabled: boolean;
   sound: boolean;
+  soundKind: SoundKind;
+  theme: Theme;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   id: 'settings',
   restSeconds: 120,
+  restIsolationSeconds: 90,
   targetRir: 2,
   progressionEnabled: true,
   sound: true,
+  soundKind: 'bell',
+  theme: 'auto',
 };

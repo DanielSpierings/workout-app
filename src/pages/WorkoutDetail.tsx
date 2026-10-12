@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, uid } from '../db';
+import { confirmDialog } from '../components/Confirm';
 import { toast } from '../components/Toast';
 import { formatDate, formatDuration, formatNumber, formatTime } from '../lib/format';
 import { e1rm, prsInWorkout, workoutVolume } from '../lib/stats';
@@ -14,7 +15,7 @@ export function WorkoutDetail({ id }: { id: string }) {
   const prs = new Map(prsInWorkout(w, all).map((p) => [p.exerciseId, p.kinds]));
 
   const remove = async () => {
-    if (!confirm('Deze workout verwijderen?')) return;
+    if (!(await confirmDialog({ title: 'Deze workout verwijderen?', message: 'De workout verdwijnt uit je geschiedenis en statistieken.', confirmLabel: 'Verwijderen', danger: true }))) return;
     await db.workouts.delete(w.id);
     go('history');
   };

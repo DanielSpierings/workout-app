@@ -31,7 +31,12 @@ export function uid(): string {
 }
 
 export async function getSettings(): Promise<Settings> {
-  return (await db.settings.get('settings')) ?? DEFAULT_SETTINGS;
+  return withDefaults(await db.settings.get('settings'));
+}
+
+/** Vult instellingen aan die er bij een eerdere versie nog niet waren. */
+export function withDefaults(stored?: Partial<Settings>): Settings {
+  return { ...DEFAULT_SETTINGS, ...stored, id: 'settings' };
 }
 
 /** Vraagt de browser om de opslag niet automatisch op te ruimen. */

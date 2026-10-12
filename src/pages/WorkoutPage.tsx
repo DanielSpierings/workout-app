@@ -6,6 +6,7 @@ import { Sheet } from '../components/Sheet';
 import { formatDate } from '../lib/format';
 import { describePlan, supersetLabel } from '../lib/plan';
 import { startWorkout } from '../lib/workouts';
+import { IconPlus } from '../components/Icons';
 import { go } from '../router';
 import { ActiveWorkout } from './ActiveWorkout';
 import { WorkoutSummary } from './WorkoutSummary';
@@ -33,6 +34,7 @@ export function WorkoutPage({ settings }: { settings: Settings }) {
   const start = async (t?: Template) => {
     setPreview(null);
     await startWorkout(t);
+    window.scrollTo(0, 0);
   };
 
   return (
@@ -42,12 +44,12 @@ export function WorkoutPage({ settings }: { settings: Settings }) {
 
       <div className="spread" style={{ marginTop: 24 }}>
         <h2 style={{ margin: 0 }}>Templates</h2>
-        <button className="btn ghost" onClick={() => go('templates/new')}>+ Template</button>
+        <button className="btn ghost" onClick={() => go('templates/new')}><IconPlus size={18} /> Template maken</button>
       </div>
       <p className="small muted">Bij het starten vult de app gewicht en herhalingen in op basis van je vorige prestaties (progressive overload).</p>
       {groupByProgram(templates).map(([program, list]) => (
         <section key={program ?? ''}>
-          {program && <h3 className="muted small" style={{ margin: '16px 0 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{program}</h3>}
+          {program && <h3 className="muted small" style={{ margin: '16px 0 8px', fontWeight: 400 }}>{program}</h3>}
           <div className="stack">
             {list.map((t) => (
               <div key={t.id} className="card clickable" onClick={() => setPreview(t)}>
@@ -81,7 +83,7 @@ export function WorkoutPage({ settings }: { settings: Settings }) {
               </div>
             </div>
           ))}
-          <button className="btn primary block" style={{ marginTop: 16 }} onClick={() => start(preview)}>Start workout</button>
+          <button className="btn primary block" style={{ marginTop: 16 }} onClick={() => start(preview)}>Workout starten</button>
         </Sheet>
       )}
     </>

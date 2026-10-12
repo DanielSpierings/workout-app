@@ -1,17 +1,21 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { db } from '../db';
-import { DEFAULT_INCREMENT } from '../data/exercises';
 import type { Exercise, SetType, Settings, Workout, WorkoutExercise, WorkoutSet } from '../types';
+import { confirmDialog } from '../components/Confirm';
 import { ExercisePicker } from '../components/ExercisePicker';
-import { NumInput } from '../components/NumInput';
-import { RestTimer, unlockAudio, type RestState } from '../components/RestTimer';
+import { IconCheck, IconChevronDown, IconClock, IconDots, IconPlus, IconTrash } from '../components/Icons';
+import { RestSheet } from '../components/RestSheet';
+import { RestTimer, type RestState } from '../components/RestTimer';
+import { SetEditor } from '../components/SetEditor';
 import { Sheet } from '../components/Sheet';
 import { toast } from '../components/Toast';
 import { formatClock, formatNumber } from '../lib/format';
 import { describePlan, supersetLabel } from '../lib/plan';
+import { unlockAudio } from '../lib/sound';
 import { exerciseSessions } from '../lib/stats';
-import { buildExercise, finishWorkout, warmupSets } from '../lib/workouts';
+import { restAfter, supersetPosition, syncWarmups, warmupSet } from '../lib/training';
+import { buildExercise, finishWorkout } from '../lib/workouts';
 
 const TYPE_ORDER: SetType[] = ['normal', 'warmup', 'drop', 'failure'];
 const TYPE_LABEL: Record<SetType, string> = { normal: '', warmup: 'W', drop: 'D', failure: 'F' };
@@ -23,7 +27,6 @@ const ACTION_TITLE: Record<string, string> = {
   deload: 'Deload',
   return: 'Weer opbouwen',
 };
-const RPE_OPTIONS = [6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10];
 const REST_KEY = 'rest-timer';
 
 function loadRest(): RestState | null {
@@ -35,10 +38,15 @@ function loadRest(): RestState | null {
   }
 }
 
+const kg = (n: number | null | undefined) => formatNumber(n ?? 0, 2);
+
 export function ActiveWorkout({ initial, settings, onFinished }: { initial: Workout; settings: Settings; onFinished: (w: Workout) => void }) {
   const [w, setW] = useState<Workout>(initial);
   const [picker, setPicker] = useState(false);
   const [menu, setMenu] = useState<number | null>(null);
+  const [editor, setEditor] = useState<{ i: number; si: number } | null>(null);
+  const [restFor, setRestFor] = useState<number | null>(null);
+  const [open, setOpen] = useState<Set<number>>(new Set());
   const [rest, setRestState] = useState<RestState | null>(loadRest);
   const [now, setNow] = useState(Date.now());
   const exercises = useLiveQuery(() => db.exercises.toArray(), []);
@@ -74,7 +82,7 @@ export function ActiveWorkout({ initial, settings, onFinished }: { initial: Work
     for (const e of w.exercises) {
       if (map.has(e.exerciseId)) continue;
       const s = exerciseSessions(history, e.exerciseId);
-      map.set(e.exerciseId, s[s.length - 1]?.sets ?? []);
+      map.set(e.exerciseId, s[s.length - 1]?.sets.filter((x) => x.type !== 'warmup') ?? []);
     }
     return map;
   }, [history, w.exercises]);
@@ -83,23 +91,37 @@ export function ActiveWorkout({ initial, settings, onFinished }: { initial: Work
     update((prev) => ({ ...prev, exercises: prev.exercises.map((e, j) => (j === i ? fn(e) : e)) }));
 
   const updateSet = (i: number, si: number, patch: Partial<WorkoutSet>) =>
-    updateExercise(i, (e) => ({ ...e, sets: e.sets.map((s, j) => (j === si ? { ...s, ...patch } : s)) }));
+    updateExercise(i, (e) => {
+      let sets = e.sets.map((s, j) => (j === si ? { ...s, ...patch } : s));
+      const ex = byId.get(e.exerciseId);
+      // Opwarmset rekent mee met het eerste werkgewicht.
+      if (ex && 'weight' in patch && sets[si].type !== 'warmup') sets = syncWarmups(sets, ex);
+      return { ...e, sets };
+    });
 
   const toggleDone = (i: number, si: number) => {
     const set = w.exercises[i].sets[si];
     if (!set.done && !(set.reps && set.reps > 0)) {
-      toast('Vul eerst het aantal herhalingen in.');
+      toast('Vul eerst het aantal herhalingen in');
       return;
     }
     unlockAudio();
     updateSet(i, si, { done: !set.done, weight: set.weight ?? 0 });
-    const restSeconds = w.exercises[i].plan?.restSeconds ?? settings.restSeconds;
-    if (!set.done && set.type !== 'warmup') setRest({ endsAt: Date.now() + restSeconds * 1000, total: restSeconds });
+    if (!set.done && set.type !== 'warmup') {
+      const { seconds } = restAfter(w.exercises, i, byId, settings);
+      setRest({ endsAt: Date.now() + seconds * 1000, total: seconds });
+    }
+  };
+
+  const removeSet = (i: number, si: number) => {
+    const before = w.exercises[i].sets;
+    updateExercise(i, (e) => ({ ...e, sets: e.sets.filter((_, j) => j !== si) }));
+    toast('Set verwijderd', { label: 'Ongedaan maken', onClick: () => updateExercise(i, (e) => ({ ...e, sets: before })) });
   };
 
   const addSet = (i: number) =>
     updateExercise(i, (e) => {
-      const last = e.sets[e.sets.length - 1];
+      const last = [...e.sets].reverse().find((s) => s.type !== 'warmup') ?? e.sets[e.sets.length - 1];
       return { ...e, sets: [...e.sets, { weight: last?.weight ?? null, reps: last?.reps ?? null, type: 'normal', done: false }] };
     });
 
@@ -122,116 +144,195 @@ export function ActiveWorkout({ initial, settings, onFinished }: { initial: Work
       return { ...prev, exercises: list };
     });
 
+  const saveRest = async (i: number, seconds: number, toTemplate: boolean) => {
+    const block = w.exercises[i];
+    const { kind } = restAfter(w.exercises, i, byId, settings);
+    const field = kind === 'round' ? 'roundRestSeconds' : 'restSeconds';
+    const working = block.sets.filter((s) => s.type !== 'warmup').length || 1;
+    updateExercise(i, (e) => ({ ...e, plan: { sets: working, ...e.plan, [field]: seconds } }));
+    if (rest) setRest(null);
+    if (toTemplate && w.templateId) {
+      const t = await db.templates.get(w.templateId);
+      const idx = t?.exercises.findIndex((x) => x.exerciseId === block.exerciseId) ?? -1;
+      if (t && idx >= 0) {
+        const list = t.exercises.map((x, j) => (j === idx ? { ...x, [field]: seconds } : x));
+        await db.templates.put({ ...t, exercises: list, updatedAt: Date.now() });
+        toast('Rust ook opgeslagen in de template');
+      } else {
+        toast('Deze oefening staat niet in de template');
+      }
+    }
+  };
+
   const finish = async () => {
-    const open = w.exercises.reduce((n, e) => n + e.sets.filter((s) => !s.done).length, 0);
-    if (open && !confirm(`${open} set(s) zijn niet afgevinkt en worden niet opgeslagen. Afronden?`)) return;
+    const openSets = w.exercises.reduce((n, e) => n + e.sets.filter((s) => !s.done).length, 0);
+    if (openSets && !(await confirmDialog({
+      title: 'Workout afronden?',
+      message: `${openSets} set${openSets === 1 ? ' is' : 's zijn'} niet afgevinkt en ${openSets === 1 ? 'wordt' : 'worden'} niet opgeslagen.`,
+      confirmLabel: 'Afronden',
+    }))) return;
     await saving.current;
     const done = await finishWorkout(w);
     setRest(null);
     if (!done) {
-      toast('Geen afgeronde sets; workout verwijderd.');
+      toast('Geen afgevinkte sets, workout niet opgeslagen');
       return;
     }
     onFinished(done);
   };
 
   const cancel = async () => {
-    if (!confirm('Workout annuleren? Alles van deze workout wordt verwijderd.')) return;
+    if (!(await confirmDialog({ title: 'Workout annuleren?', message: 'Alles van deze workout wordt verwijderd.', confirmLabel: 'Workout verwijderen', danger: true }))) return;
     await saving.current;
     await db.workouts.delete(w.id);
     setRest(null);
   };
 
+  // Voortgang, huidige oefening en de volgende set voor de rusttimer.
+  const allSets = w.exercises.flatMap((e) => e.sets);
+  const doneCount = allSets.filter((s) => s.done).length;
+  // Open sets vóór een al afgevinkte set (zoals een overgeslagen opwarmset) tellen niet als "volgende".
+  const nextOpen = (e: WorkoutExercise) => {
+    const lastDone = e.sets.reduce((acc, s, j) => (s.done ? j : acc), -1);
+    return e.sets.findIndex((s, j) => !s.done && j > lastDone);
+  };
+  const current = w.exercises.findIndex((e) => nextOpen(e) >= 0);
+  let next: ReactNode;
+  if (current >= 0) {
+    const block = w.exercises[current];
+    const s = block.sets[nextOpen(block)];
+    next = <>Volgende: <b>{byId.get(block.exerciseId)?.name ?? ''}</b> · {s.weight != null ? `${kg(s.weight)} kg × ` : ''}{s.reps ?? '?'}{s.type === 'warmup' ? ' (opwarmen)' : ''}</>;
+  }
+
+  const editing = editor && w.exercises[editor.i]?.sets[editor.si] ? editor : null;
+
   return (
     <>
-      <header className="page">
-        <div className="grow">
-          <input
-            className="field"
-            style={{ fontSize: 20, fontWeight: 700, background: 'transparent', border: 0, padding: 0, minHeight: 32 }}
-            value={w.name}
-            onChange={(e) => update((p) => ({ ...p, name: e.target.value }))}
-          />
-          <div className="small muted">{formatClock((now - w.startedAt) / 1000)}</div>
+      <div className="workout-head">
+        <div className="row">
+          <div className="grow">
+            <input className="name" aria-label="Naam van de workout" value={w.name} onChange={(e) => update((p) => ({ ...p, name: e.target.value }))} />
+            <div className="small muted">{formatClock((now - w.startedAt) / 1000)} · {doneCount} van {allSets.length} sets</div>
+          </div>
+          <button className="btn good" onClick={finish}>Afronden</button>
         </div>
-        <button className="btn good" onClick={finish}>Afronden</button>
-      </header>
+        <div className="progress" aria-hidden="true"><div style={{ width: `${allSets.length ? (doneCount / allSets.length) * 100 : 0}%` }} /></div>
+      </div>
 
       <div className="stack">
         {w.exercises.map((e, i) => {
           const ex = byId.get(e.exerciseId);
-          const prev = previous.get(e.exerciseId) ?? [];
-          const prevWork = prev.filter((s) => s.type !== 'warmup');
+          const prevWork = previous.get(e.exerciseId) ?? [];
+          const r = restAfter(w.exercises, i, byId, settings);
+          const pos = supersetPosition(w.exercises, i);
+          const [action, explanation, summary] = e.suggestion?.split('|') ?? [];
+          const isOpen = open.has(i);
           let n = 0;
-          const [action, text] = e.suggestion?.split('|') ?? [];
           return (
-            <div className="card exercise-card" key={`${e.exerciseId}-${i}`}>
+            <div className={`card exercise-card ${i === current ? 'current' : ''}`} key={`${e.exerciseId}-${i}`}>
               <div className="spread">
                 <h3 className="truncate" onClick={() => { location.hash = `#/exercises/${e.exerciseId}`; }}>
-                  {e.plan?.supersetGroup != null && <span className="badge" style={{ marginRight: 6 }}>Superset {supersetLabel(e.plan.supersetGroup)}</span>}
+                  {pos && <span className="badge" style={{ marginRight: 6 }}>{supersetLabel(e.plan!.supersetGroup!)}{pos.members.indexOf(i) + 1}</span>}
                   {ex?.name ?? e.exerciseId}
                 </h3>
-                <button className="btn ghost small" onClick={() => setMenu(i)} aria-label="Opties">•••</button>
+                <button className="btn icon" onClick={() => setMenu(i)} aria-label="Opties"><IconDots /></button>
               </div>
-              {e.plan && <div className="small muted" style={{ marginTop: 2 }}>{describePlan(e.plan, ex)}</div>}
-              {e.plan?.notes && <div className="small muted" style={{ marginTop: 2 }}>{e.plan.notes}</div>}
-              {text && (
-                <div className={`suggestion ${action}`}>
-                  <b>{ACTION_TITLE[action] ?? 'Advies'}</b>
-                  {text}
+              <div className="meta-row">
+                <button className="rest-chip" onClick={() => setRestFor(i)} aria-label="Rusttijd aanpassen">
+                  <IconClock size={16} /> {formatClock(r.seconds)}{r.kind === 'between' ? ' tot volgende' : r.kind === 'round' ? ' na ronde' : ''}
+                </button>
+                {e.plan && <span className="small muted">{describePlan(e.plan, ex, { rest: false, warmup: false })}</span>}
+              </div>
+              {(explanation || e.plan?.notes) && (
+                <div className={`suggestion ${action ?? ''} ${isOpen ? 'open' : ''}`}>
+                  <button onClick={() => setOpen((o) => { const s = new Set(o); if (s.has(i)) s.delete(i); else s.add(i); return s; })} aria-expanded={isOpen}>
+                    <span className="grow">
+                      {explanation ? <><b>{ACTION_TITLE[action] ?? 'Advies'}</b>{summary ? ` · ${summary}` : ''}</> : <b>Notities</b>}
+                    </span>
+                    <IconChevronDown size={18} />
+                  </button>
+                  {isOpen && (
+                    <div className="detail">
+                      {explanation && <p>{explanation}</p>}
+                      {e.plan?.notes && <p>{e.plan.notes}</p>}
+                    </div>
+                  )}
                 </div>
               )}
               {e.notes != null && (
                 <textarea className="field" rows={2} placeholder="Notitie" value={e.notes} onChange={(ev) => updateExercise(i, (x) => ({ ...x, notes: ev.target.value }))} style={{ marginTop: 6 }} />
               )}
-              <table className="sets">
-                <thead>
-                  <tr><th>Set</th><th>Vorige</th><th>kg</th><th>Reps</th><th>RPE</th><th></th><th></th></tr>
-                </thead>
-                <tbody>
-                  {e.sets.map((s, si) => {
-                    const idx = s.type === 'warmup' ? -1 : n++;
-                    const p = idx >= 0 ? prevWork[idx] : undefined;
-                    return (
-                      <tr key={si} className={s.done ? 'done' : ''}>
-                        <td>
-                          <button
-                            className={`set-type ${s.type}`}
-                            onClick={() => updateSet(i, si, { type: TYPE_ORDER[(TYPE_ORDER.indexOf(s.type) + 1) % TYPE_ORDER.length] })}
-                            aria-label="Type set wijzigen"
-                          >
-                            {TYPE_LABEL[s.type] || idx + 1}
-                          </button>
-                        </td>
-                        <td className="prev">{p ? `${formatNumber(p.weight ?? 0, 2)}×${p.reps}` : '–'}</td>
-                        <td><NumInput aria-label="Gewicht" value={s.weight} onChange={(v) => updateSet(i, si, { weight: v })} placeholder="kg" /></td>
-                        <td><NumInput aria-label="Herhalingen" decimal={false} value={s.reps} onChange={(v) => updateSet(i, si, { reps: v })} placeholder="0" /></td>
-                        <td>
-                          <select aria-label="RPE" value={s.rpe ?? ''} onChange={(ev) => updateSet(i, si, { rpe: ev.target.value ? Number(ev.target.value) : null })}>
-                            <option value="">–</option>
-                            {RPE_OPTIONS.map((r) => <option key={r} value={r}>{String(r).replace('.', ',')}</option>)}
-                          </select>
-                        </td>
-                        <td><button className={`check ${s.done ? 'on' : ''}`} onClick={() => toggleDone(i, si)} aria-label="Set afvinken">✓</button></td>
-                        <td>
-                          <button className="del" aria-label="Set verwijderen" onClick={() => updateExercise(i, (x) => ({ ...x, sets: x.sets.filter((_, j) => j !== si) }))}>✕</button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <button className="btn block small" style={{ marginTop: 8 }} onClick={() => addSet(i)}>+ Set toevoegen</button>
+              <div className="set-head" aria-hidden="true"><span>Set</span><span>Vorige</span><span>kg</span><span>Reps</span><span /></div>
+              {e.sets.map((s, si) => {
+                const idx = s.type === 'warmup' ? -1 : n++;
+                const p = idx >= 0 ? prevWork[idx] : undefined;
+                const label = TYPE_LABEL[s.type] || String(idx + 1);
+                return (
+                  <SwipeRow key={si} onDelete={() => removeSet(i, si)}>
+                    <div className={`set-row ${s.done ? 'done' : ''}`}>
+                      <button
+                        className={`set-type ${s.type}`}
+                        onClick={() => updateSet(i, si, { type: TYPE_ORDER[(TYPE_ORDER.indexOf(s.type) + 1) % TYPE_ORDER.length], auto: false })}
+                        aria-label={`Type set ${label} wijzigen`}
+                      >
+                        {label}
+                      </button>
+                      <span className="prev">{p ? `${kg(p.weight)} × ${p.reps}` : s.type === 'warmup' ? 'opwarmen' : '–'}</span>
+                      <button className={`value-btn ${s.weight == null ? 'blank' : ''}`} onClick={() => setEditor({ i, si })} aria-label={`Gewicht set ${label}`}>
+                        {s.weight == null ? 'kg' : kg(s.weight)}
+                      </button>
+                      <button className={`value-btn ${s.reps == null ? 'blank' : ''}`} onClick={() => setEditor({ i, si })} aria-label={`Herhalingen set ${label}`}>
+                        {s.reps ?? '–'}
+                        {s.rpe != null && <small>@{String(s.rpe).replace('.', ',')}</small>}
+                      </button>
+                      <button className={`check ${s.done ? 'on' : ''}`} onClick={() => toggleDone(i, si)} aria-label={`Set ${label} afvinken`} aria-pressed={s.done}>
+                        <IconCheck size={22} />
+                      </button>
+                    </div>
+                  </SwipeRow>
+                );
+              })}
+              <button className="btn block small" style={{ marginTop: 8 }} onClick={() => addSet(i)}><IconPlus size={18} /> Set toevoegen</button>
             </div>
           );
         })}
         {!w.exercises.length && <div className="empty">Voeg je eerste oefening toe.</div>}
-        <button className="btn primary block" onClick={() => setPicker(true)}>+ Oefening toevoegen</button>
+        <button className="btn primary block" onClick={() => setPicker(true)}><IconPlus size={18} /> Oefening toevoegen</button>
         <button className="btn danger block" onClick={cancel}>Workout annuleren</button>
       </div>
 
-      {rest && <RestTimer rest={rest} onChange={setRest} sound={settings.sound} />}
+      {rest && <RestTimer rest={rest} onChange={setRest} sound={settings.sound} soundKind={settings.soundKind} next={next} />}
       {picker && <ExercisePicker onPick={addExercises} onClose={() => setPicker(false)} />}
+      {editing && (
+        <SetEditor
+          exercise={byId.get(w.exercises[editing.i].exerciseId)}
+          label={(() => {
+            const s = w.exercises[editing.i].sets[editing.si];
+            if (s.type === 'warmup') return 'opwarmset';
+            return `set ${w.exercises[editing.i].sets.slice(0, editing.si + 1).filter((x) => x.type !== 'warmup').length}`;
+          })()}
+          set={w.exercises[editing.i].sets[editing.si]}
+          previous={(() => {
+            const block = w.exercises[editing.i];
+            if (block.sets[editing.si].type === 'warmup') return undefined;
+            const idx = block.sets.slice(0, editing.si).filter((x) => x.type !== 'warmup').length;
+            return previous.get(block.exerciseId)?.[idx];
+          })()}
+          onChange={(patch) => updateSet(editing.i, editing.si, patch)}
+          onToggleDone={() => toggleDone(editing.i, editing.si)}
+          onClose={() => setEditor(null)}
+        />
+      )}
+      {restFor != null && w.exercises[restFor] && (
+        <RestSheet
+          title={byId.get(w.exercises[restFor].exerciseId)?.name ?? 'Rust'}
+          kind={restAfter(w.exercises, restFor, byId, settings).kind}
+          seconds={restAfter(w.exercises, restFor, byId, settings).seconds}
+          canSaveToTemplate={!!w.templateId}
+          onSave={(s, t) => void saveRest(restFor, s, t)}
+          onClose={() => setRestFor(null)}
+        />
+      )}
       {menu != null && w.exercises[menu] && (
         <ExerciseMenu
           exercise={byId.get(w.exercises[menu].exerciseId)}
@@ -239,20 +340,77 @@ export function ActiveWorkout({ initial, settings, onFinished }: { initial: Work
           onClose={() => setMenu(null)}
           onWarmup={() => {
             const block = w.exercises[menu];
-            const first = block.sets.find((s) => s.type !== 'warmup' && (s.weight ?? 0) > 0);
             const ex = byId.get(block.exerciseId);
-            if (!first || !ex) return toast('Vul eerst een werkgewicht in.');
-            const step = ex.increment ?? DEFAULT_INCREMENT[ex.equipment];
-            updateExercise(menu, (x) => ({ ...x, sets: [...warmupSets(first.weight!, step, block.plan?.warmupSets || 3), ...x.sets.filter((s) => s.type !== 'warmup')] }));
+            const has = block.sets.some((s) => s.type === 'warmup');
+            if (ex) {
+              updateExercise(menu, (x) => has
+                ? { ...x, sets: x.sets.filter((s) => s.type !== 'warmup') }
+                : { ...x, sets: [warmupSet(x.sets.find((s) => s.type !== 'warmup')?.weight ?? null, ex), ...x.sets] });
+            }
             setMenu(null);
           }}
           onNote={() => { updateExercise(menu, (x) => ({ ...x, notes: x.notes ?? '' })); setMenu(null); }}
           onUp={() => { move(menu, -1); setMenu(null); }}
           onDown={() => { move(menu, 1); setMenu(null); }}
-          onRemove={() => { update((p) => ({ ...p, exercises: p.exercises.filter((_, j) => j !== menu) })); setMenu(null); }}
+          onRemove={async () => {
+            const i = menu;
+            setMenu(null);
+            const name = byId.get(w.exercises[i].exerciseId)?.name ?? 'deze oefening';
+            if (await confirmDialog({ title: `${name} verwijderen?`, message: 'De sets van deze oefening worden uit de workout gehaald.', confirmLabel: 'Verwijderen', danger: true })) {
+              update((p) => ({ ...p, exercises: p.exercises.filter((_, j) => j !== i) }));
+            }
+          }}
         />
       )}
     </>
+  );
+}
+
+/** Rij die je naar links veegt om te verwijderen. */
+function SwipeRow({ children, onDelete }: { children: ReactNode; onDelete: () => void }) {
+  const [dx, setDx] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const start = useRef<{ x: number; y: number; horizontal: boolean | null } | null>(null);
+  const moved = useRef(false);
+  const THRESHOLD = 90;
+
+  return (
+    <div
+      className="swipe"
+      onPointerDown={(e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        start.current = { x: e.clientX, y: e.clientY, horizontal: null };
+        moved.current = false;
+      }}
+      onPointerMove={(e) => {
+        const s = start.current;
+        if (!s) return;
+        const ddx = e.clientX - s.x;
+        const ddy = e.clientY - s.y;
+        if (s.horizontal == null && Math.hypot(ddx, ddy) > 8) s.horizontal = Math.abs(ddx) > Math.abs(ddy);
+        if (!s.horizontal) return;
+        moved.current = true;
+        setDragging(true);
+        setDx(Math.min(0, Math.max(ddx, -160)));
+      }}
+      onPointerUp={() => {
+        if (dx < -THRESHOLD) onDelete();
+        start.current = null;
+        setDragging(false);
+        setDx(0);
+      }}
+      onPointerCancel={() => { start.current = null; setDragging(false); setDx(0); }}
+      onClickCapture={(e) => {
+        if (moved.current) {
+          e.stopPropagation();
+          e.preventDefault();
+          moved.current = false;
+        }
+      }}
+    >
+      {dx < 0 && <div className="behind" aria-hidden="true"><IconTrash size={18} /> {dx < -THRESHOLD ? 'Loslaten om te verwijderen' : 'Verwijderen'}</div>}
+      <div style={{ transform: `translateX(${dx}px)`, transition: dragging ? 'none' : 'transform 0.2s ease' }}>{children}</div>
+    </div>
   );
 }
 
@@ -266,13 +424,14 @@ function ExerciseMenu(props: {
   onDown: () => void;
   onRemove: () => void;
 }) {
+  const hasWarmup = props.block.sets.some((s) => s.type === 'warmup');
   return (
     <Sheet title={props.exercise?.name ?? 'Oefening'} onClose={props.onClose}>
-      <div className="list-item" onClick={props.onWarmup}>Opwarmsets toevoegen{props.block.plan?.warmupSets ? ` (${props.block.plan.warmupSets})` : ''}</div>
+      <div className="list-item" onClick={props.onWarmup}>{hasWarmup ? 'Opwarmset verwijderen' : 'Opwarmset toevoegen (~60%)'}</div>
       <div className="list-item" onClick={props.onNote}>Notitie toevoegen</div>
       <div className="list-item" onClick={props.onUp}>Omhoog verplaatsen</div>
       <div className="list-item" onClick={props.onDown}>Omlaag verplaatsen</div>
-      <div className="list-item" style={{ color: 'var(--bad)' }} onClick={props.onRemove}>Oefening verwijderen</div>
+      <div className="list-item danger" onClick={props.onRemove}>Oefening verwijderen</div>
     </Sheet>
   );
 }

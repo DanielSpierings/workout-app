@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { db, requestPersistentStorage } from '../db';
-import type { Settings } from '../types';
-import { NumInput } from '../components/NumInput';
+import type { Settings, SoundKind, Theme } from '../types';
+import { confirmDialog } from '../components/Confirm';
 import { ProgramImport } from '../components/ProgramImport';
 import { toast } from '../components/Toast';
 import { download, exportBackup, exportCsv, importStrong, restoreBackup, type Backup } from '../lib/backup';
 import { analyzeProgram, type ProgramAnalysis } from '../lib/programImport';
 import { REFERENCES } from '../lib/progression';
+import { formatClock } from '../lib/format';
+import { playSound, SOUND_LABELS } from '../lib/sound';
 
 export function SettingsPage({ settings }: { settings: Settings }) {
   const strongInput = useRef<HTMLInputElement>(null);
@@ -48,7 +50,7 @@ export function SettingsPage({ settings }: { settings: Settings }) {
         setAnalysis(analyzeProgram(b, await db.exercises.toArray()));
         return;
       }
-      if (!confirm(`Back-up van ${b.exportedAt?.slice(0, 10)} terugzetten? Bestaande items met hetzelfde ID worden overschreven.`)) return;
+      if (!(await confirmDialog({ title: 'Back-up terugzetten?', message: `Back-up van ${b.exportedAt?.slice(0, 10)}. Bestaande items met hetzelfde ID worden overschreven.`, confirmLabel: 'Terugzetten' }))) return;
       await restoreBackup(b);
       toast('Back-up teruggezet.');
     } catch (e) {
@@ -62,15 +64,42 @@ export function SettingsPage({ settings }: { settings: Settings }) {
     <>
       <header className="page"><h1>Instellingen</h1></header>
 
-      <h2>Training</h2>
+      <h2>Rust en geluid</h2>
       <div className="card stack">
-        <div className="spread">
-          <label htmlFor="rest">Rusttijd (seconden)</label>
-          <div style={{ width: 90 }}><NumInput className="field" decimal={false} value={settings.restSeconds} onChange={(v) => v && set({ restSeconds: v })} /></div>
+        <div>
+          <label className="lbl">Standaard rust bij compound-oefeningen (squat, bench, rows…)</label>
+          <RestChips value={settings.restSeconds} onChange={(v) => set({ restSeconds: v })} />
         </div>
+        <div>
+          <label className="lbl">Standaard rust bij isolatie-oefeningen (curls, raises…)</label>
+          <RestChips value={settings.restIsolationSeconds} onChange={(v) => set({ restIsolationSeconds: v })} />
+        </div>
+        <p className="small muted" style={{ margin: 0 }}>Een template of je keuze tijdens de workout gaat hier altijd voor.</p>
         <div className="spread">
-          <span>Geluid bij einde rust</span>
+          <span>Geluid aan het einde van de rust</span>
           <input type="checkbox" checked={settings.sound} onChange={(e) => set({ sound: e.target.checked })} />
+        </div>
+        {settings.sound && (
+          <div>
+            <label className="lbl">Geluid (tik om te beluisteren)</label>
+            <div className="chips wrap">
+              {(Object.keys(SOUND_LABELS) as SoundKind[]).map((k) => (
+                <button key={k} className={`chip ${settings.soundKind === k ? 'on' : ''}`} onClick={() => { set({ soundKind: k }); playSound(k); }}>
+                  {SOUND_LABELS[k]}
+                </button>
+              ))}
+            </div>
+            <p className="small muted" style={{ marginBottom: 0 }}>Je muziek gaat tijdens het geluid even zachter. Met het scherm vergrendeld of de app op de achtergrond speelt iOS geen geluid af.</p>
+          </div>
+        )}
+      </div>
+
+      <h2>Weergave</h2>
+      <div className="card">
+        <div className="chips">
+          {([['auto', 'Zoals iPhone'], ['light', 'Licht'], ['dark', 'Donker']] as [Theme, string][]).map(([k, l]) => (
+            <button key={k} className={`chip ${settings.theme === k ? 'on' : ''}`} onClick={() => set({ theme: k })}>{l}</button>
+          ))}
         </div>
       </div>
 
@@ -142,5 +171,17 @@ export function SettingsPage({ settings }: { settings: Settings }) {
       <p className="small muted" style={{ textAlign: 'center', marginTop: 24 }}>Workout · versie {__APP_VERSION__}</p>
       {analysis && <ProgramImport analysis={analysis} onClose={() => setAnalysis(null)} />}
     </>
+  );
+}
+
+const REST_OPTIONS = [60, 90, 120, 150, 180];
+
+function RestChips({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="chips">
+      {REST_OPTIONS.map((s) => (
+        <button key={s} className={`chip ${value === s ? 'on' : ''}`} onClick={() => onChange(s)}>{formatClock(s)}</button>
+      ))}
+    </div>
   );
 }

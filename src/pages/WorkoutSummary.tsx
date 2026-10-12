@@ -29,7 +29,7 @@ export function WorkoutSummary({ workout, onClose }: { workout: Workout; onClose
 
   return (
     <>
-      <header className="page"><h1>Goed gedaan! 💪</h1></header>
+      <header className="page"><h1>Workout opgeslagen</h1></header>
       <div className="card stack">
         <h3>{workout.name}</h3>
         <div className="stats">
@@ -41,7 +41,7 @@ export function WorkoutSummary({ workout, onClose }: { workout: Workout; onClose
       </div>
       {prs.length > 0 && (
         <>
-          <h2>Nieuwe records 🏆</h2>
+          <h2>Nieuwe records</h2>
           <div className="card stack">
             {prs.map((p) => (
               <div key={p.exerciseId} className="spread">

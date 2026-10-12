@@ -5,10 +5,12 @@ import { DEFAULT_INCREMENT, EQUIPMENT_LABELS, MUSCLE_LABELS } from '../data/exer
 import type { Equipment, Exercise, Muscle } from '../types';
 import { LineChart } from '../components/LineChart';
 import { NumInput } from '../components/NumInput';
+import { confirmDialog } from '../components/Confirm';
 import { toast } from '../components/Toast';
 import { formatDate, formatKg, formatNumber } from '../lib/format';
 import { suggestProgression, type Suggestion } from '../lib/progression';
 import { exerciseSessions, recordsFor } from '../lib/stats';
+import { isCompound } from '../lib/training';
 import { back, go } from '../router';
 
 type Metric = 'e1rm' | 'weight' | 'volume';
@@ -41,7 +43,7 @@ export function ExerciseDetail({ id }: { id: string }) {
   };
   const remove = async () => {
     if (sessions.length) return toast('Deze oefening zit in je geschiedenis en kan niet worden verwijderd.');
-    if (!confirm(`“${exercise.name}” verwijderen?`)) return;
+    if (!(await confirmDialog({ title: `“${exercise.name}” verwijderen?`, confirmLabel: 'Verwijderen', danger: true }))) return;
     await db.exercises.delete(exercise.id);
     go('exercises');
   };
@@ -126,6 +128,18 @@ function ExerciseForm({ value, onChange, onSave, onCancel, onDelete }: {
         <div className="grow"><label className="lbl">Min. reps</label><NumInput className="field" decimal={false} value={value.repMin} onChange={(v) => set({ repMin: Math.max(1, v ?? 1) })} /></div>
         <div className="grow"><label className="lbl">Max. reps</label><NumInput className="field" decimal={false} value={value.repMax} onChange={(v) => set({ repMax: Math.max(1, v ?? 1) })} /></div>
         <div className="grow"><label className="lbl">Stap (kg)</label><NumInput className="field" value={value.increment} placeholder={String(DEFAULT_INCREMENT[value.equipment]).replace('.', ',')} onChange={(v) => set({ increment: v && v > 0 ? v : undefined })} /></div>
+      </div>
+      <div>
+        <label className="lbl">Automatische opwarmset (~60% × 8)</label>
+        <select
+          className="field"
+          value={value.warmup == null ? 'auto' : value.warmup ? 'yes' : 'no'}
+          onChange={(e) => set({ warmup: e.target.value === 'auto' ? undefined : e.target.value === 'yes' })}
+        >
+          <option value="auto">Automatisch ({isCompound(value) ? 'ja, compound-oefening' : 'nee, isolatie-oefening'})</option>
+          <option value="yes">Altijd</option>
+          <option value="no">Nooit</option>
+        </select>
       </div>
       <label className="row small">
         <input type="checkbox" checked={value.lowerBody} onChange={(e) => set({ lowerBody: e.target.checked })} />

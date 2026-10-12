@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import type { Template, Workout, WorkoutSet } from '../types';
-import { addedExercises, templateFromWorkout, warmupSets } from './workouts';
+import { addedExercises, templateFromWorkout } from './workouts';
 
 const set = (done = true): WorkoutSet => ({ weight: 50, reps: 8, type: 'normal', done });
 
@@ -30,14 +30,5 @@ describe('templates bijwerken', () => {
   it('neemt de planning mee bij opslaan als nieuwe template', () => {
     const t = templateFromWorkout(workout, 'nieuw');
     expect(t.exercises[0]).toMatchObject({ exerciseId: 'leg-press', sets: 1, repMin: 6, restSeconds: 120, rpe: 7 });
-  });
-});
-
-describe('warmupSets', () => {
-  it('bouwt op volgens het aantal opwarmsets', () => {
-    expect(warmupSets(100, 2.5, 2).map((s) => [s.weight, s.reps])).toEqual([[50, 8], [70, 5]]);
-    expect(warmupSets(100, 2.5, 4)).toHaveLength(4);
-    expect(warmupSets(100, 2.5, 0)).toEqual([]);
-    expect(warmupSets(10, 2, 1)[0].weight).toBe(6);
   });
 });

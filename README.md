@@ -4,8 +4,10 @@ Een offline webapp (PWA) voor krachttraining, als alternatief voor Strong. Gemaa
 
 ## Functies
 
-- **Workouts loggen**: sets met gewicht, herhalingen, optioneel RPE, en type set (opwarm, drop, tot falen). Je vorige prestatie staat naast elke set.
-- **Rusttimer**: start automatisch na elke werkset, met ±15 s en een geluid aan het eind. De timer loopt goed door als de app even op de achtergrond staat.
+- **Workouts loggen**: sets met gewicht, herhalingen, optioneel RPE, en type set (opwarm, drop, tot falen). Je vorige prestatie staat naast elke set. Tik op gewicht of herhalingen voor grote +/−-knoppen; veeg een set naar links om hem te verwijderen (met ongedaan maken).
+- **Opwarmset**: compound-oefeningen (squat, deadlift, presses, rows…) krijgen automatisch één opwarmset van ~60% × 8 die meerekent met je werkgewicht. Per oefening in te stellen (automatisch, altijd, nooit).
+- **Rusttimer**: start automatisch na elke werkset, als ring met de volgende set erbij. Standaard 2:00 bij compound- en 1:30 bij isolatie-oefeningen; per oefening aan te passen tijdens de workout of in de template. In een superset is de rust kort tussen de oefeningen en langer na de laatste oefening van de ronde. Aan het eind klinkt een bel, klankschaal of ding-dong; je muziek gaat dan even zachter (Audio Session API, Safari 16.4+). De timer loopt goed door als de app even op de achtergrond staat.
+- **Weergave**: licht en donker thema op basis van een eigen design system (perkament, inkt, één teal accent, Inter); volgt standaard de instelling van je iPhone.
 - **Templates**: routines met aantal sets en eventueel een eigen herhalingsbereik per oefening. Je kunt ook een afgeronde workout opslaan als template, of hem herhalen.
 - **Progressive overload**: bij het starten van een workout vult de app per oefening een voorstel in voor gewicht en herhalingen, met uitleg waarom (zie hieronder).
 - **Geschiedenis en statistieken**: records (zwaarste gewicht, geschatte 1RM, volume), grafieken per oefening, PR's per workout en werksets per spiergroep per week.
@@ -108,7 +110,7 @@ npm test           # unittests (progressie-engine, Strong- en programma-import, 
 npm run build      # productie-build in dist/
 ```
 
-Stack: Vite, React, TypeScript, Dexie (IndexedDB), vite-plugin-pwa.
+Stack: Vite, React, TypeScript, Dexie (IndexedDB), vite-plugin-pwa. Lettertype Inter (OFL) via @fontsource; iconen uit Tabler Icons (MIT).
 
 ## Publiceren via GitHub Pages
 

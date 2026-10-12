@@ -1,6 +1,6 @@
 import { db, getSettings, uid } from '../db';
 import type { Exercise, ExercisePlan, Template, TemplateExercise, Workout, WorkoutExercise, WorkoutSet } from '../types';
-import { DEFAULT_INCREMENT } from '../data/exercises';
+import { warmupCount, warmupSet } from './training';
 import { suggestProgression } from './progression';
 import { exerciseSessions, isWorkingSet } from './stats';
 
@@ -18,13 +18,12 @@ export async function buildExercise(
   plan?: ExercisePlan,
   history?: Workout[],
 ): Promise<WorkoutExercise> {
+  // Hooguit één automatische opwarmset; die rekent mee zodra het werkgewicht bekend is.
   const withPlan = (block: WorkoutExercise): WorkoutExercise => {
-    if (!plan) return block;
-    const first = block.sets.find((x) => (x.weight ?? 0) > 0);
-    const warmups = plan.warmupSets && first
-      ? warmupSets(first.weight!, exercise.increment ?? DEFAULT_INCREMENT[exercise.equipment], plan.warmupSets)
-      : [];
-    return { ...block, plan: { ...plan }, sets: [...warmups, ...block.sets] };
+    const working = block.sets.filter((x) => x.type !== 'warmup');
+    const bodyweight = exercise.equipment === 'bodyweight' && !working.some((x) => (x.weight ?? 0) > 0);
+    const warmups = warmupCount(exercise, plan) && !bodyweight ? [warmupSet(working[0]?.weight ?? null, exercise)] : [];
+    return { ...block, ...(plan ? { plan: { ...plan } } : {}), sets: [...warmups, ...working] };
   };
   const settings = await getSettings();
   const sessions = exerciseSessions(history ?? (await finishedWorkouts()), exercise.id);
@@ -34,7 +33,7 @@ export async function buildExercise(
     const sets: WorkoutSet[] = last
       ? last.sets.map((s) => ({ weight: s.weight, reps: s.reps, type: s.type, done: false }))
       : Array.from({ length: plan?.sets ?? 3 }, () => ({ weight: null, reps: null, type: 'normal', done: false }));
-    return withPlan({ exerciseId: exercise.id, sets: plan?.warmupSets ? sets.filter((x) => x.type !== 'warmup') : sets });
+    return withPlan({ exerciseId: exercise.id, sets });
   }
 
   const s = suggestProgression(exercise, sessions, {
@@ -46,9 +45,19 @@ export async function buildExercise(
   });
   return withPlan({
     exerciseId: exercise.id,
-    suggestion: `${s.action}|${s.explanation}`,
+    suggestion: `${s.action}|${s.explanation}|${targetSummary(s.targets, plan?.repMin ?? exercise.repMin, plan?.repMax ?? exercise.repMax)}`,
     sets: s.targets.map((t) => ({ weight: t.weight, reps: t.reps, type: 'normal', done: false })),
   });
+}
+
+/** Korte samenvatting van het advies, bv. "82,5 kg × 7" of "100 kg × 9/8/8". */
+export function targetSummary(targets: { weight: number | null; reps: number }[], repMin: number, repMax: number): string {
+  const first = targets[0];
+  if (!first) return '';
+  const reps = [...new Set(targets.map((t) => t.reps))].length === 1 ? String(first.reps) : targets.map((t) => t.reps).join('/');
+  if (first.weight == null) return `${repMin}–${repMax} herhalingen`;
+  const w = Number(first.weight.toFixed(2)).toString().replace('.', ',');
+  return first.weight > 0 ? `${w} kg × ${reps}` : `${reps} herhalingen`;
 }
 
 export interface WorkoutPlan {
@@ -132,20 +141,4 @@ export function templateFromWorkout(w: Workout, id = uid()): Template {
 export function addedExercises(w: Workout, template: Template): TemplateExercise[] {
   const known = new Set(template.exercises.map((e) => e.exerciseId));
   return templateFromWorkout(w, template.id).exercises.filter((e) => !known.has(e.exerciseId));
-}
-
-// Opbouw richting het werkgewicht, afhankelijk van het aantal opwarmsets.
-const WARMUP_RAMPS: [number, number][][] = [
-  [],
-  [[0.6, 8]],
-  [[0.5, 8], [0.7, 5]],
-  [[0.45, 8], [0.65, 5], [0.85, 3]],
-  [[0.45, 8], [0.6, 5], [0.75, 4], [0.85, 3]],
-];
-
-/** Opwarmsets richting het eerste werkgewicht (1–4 sets). */
-export function warmupSets(workWeight: number, step: number, count = 3): WorkoutSet[] {
-  const ramp = WARMUP_RAMPS[Math.max(0, Math.min(count, WARMUP_RAMPS.length - 1))];
-  const r = (x: number) => Math.max(step, Math.round(x / step) * step);
-  return ramp.map(([pct, reps]) => ({ weight: r(workWeight * pct), reps, type: 'warmup', done: false }));
 }

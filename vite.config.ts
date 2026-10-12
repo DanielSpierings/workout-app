@@ -14,14 +14,18 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        // Ook het lettertype offline beschikbaar maken.
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+      },
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Workout',
         short_name: 'Workout',
         description: 'Krachttraining loggen met slimme progressive overload',
         lang: 'nl',
-        theme_color: '#111318',
-        background_color: '#111318',
+        theme_color: '#faf8f5',
+        background_color: '#faf8f5',
         display: 'standalone',
         orientation: 'portrait',
         start_url: base,

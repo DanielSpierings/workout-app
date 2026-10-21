@@ -37,6 +37,9 @@ export const IconTrash = (p: P) => (
 export const IconDots = (p: P) => (
   <Icon {...p}><path d="M4 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /><path d="M18 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" /></Icon>
 );
+export const IconFlame = (p: P) => (
+  <Icon {...p}><path d="M12 10.941c2.333 -3.308 .167 -7.823 -1 -8.941c0 3.395 -2.235 5.299 -3.667 6.706c-1.43 1.408 -2.333 3.621 -2.333 5.588c0 3.704 3.134 6.706 7 6.706s7 -3.002 7 -6.706c0 -1.712 -1.232 -4.403 -2.333 -5.588c-2.084 3.353 -3.257 3.353 -4.667 2.235" /></Icon>
+);
 export const IconSkip = (p: P) => <Icon {...p}><path d="M4 5v14l12 -7l-12 -7" /><path d="M20 5l0 14" /></Icon>;
 export const IconTrophy = (p: P) => (
   <Icon {...p}><path d="M8 21l8 0" /><path d="M12 17l0 4" /><path d="M7 4l10 0" /><path d="M17 4v8a5 5 0 0 1 -10 0v-8" /><path d="M3 9a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /><path d="M17 9a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /></Icon>

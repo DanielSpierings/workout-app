@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, uid } from '../db';
 import { confirmDialog } from '../components/Confirm';
+import { IconFlame } from '../components/Icons';
 import { toast } from '../components/Toast';
 import { formatDate, formatDuration, formatNumber, formatTime } from '../lib/format';
 import { e1rm, prsInWorkout, workoutVolume } from '../lib/stats';
@@ -22,6 +23,11 @@ export function WorkoutDetail({ id }: { id: string }) {
   const again = async () => {
     await repeatWorkout(w);
     go('workout');
+  };
+  // Achteraf markeren telt alleen voor het volgende advies als dit je laatste sessie van de oefening is.
+  const toggleHard = async (i: number) => {
+    const exercises = w.exercises.map((e, j) => (j === i ? { ...e, hard: e.hard ? undefined : true } : e));
+    await db.workouts.put({ ...w, exercises });
   };
   const asTemplate = async () => {
     await db.templates.add(templateFromWorkout(w, uid()));
@@ -50,6 +56,13 @@ export function WorkoutDetail({ id }: { id: string }) {
                 </h3>
                 <span className="row">{prs.get(e.exerciseId)?.map((k) => <span key={k} className="badge good">PR {k}</span>)}</span>
               </div>
+              {w.endedAt && (
+                <div className="meta-row">
+                  <button className={`rest-chip hard ${e.hard ? 'on' : ''}`} onClick={() => void toggleHard(i)} aria-pressed={!!e.hard}>
+                    <IconFlame size={16} /> Voelde zwaar
+                  </button>
+                </div>
+              )}
               {e.notes && <div className="small muted">{e.notes}</div>}
               {e.sets.map((s, si) => (
                 <div key={si} className="spread small" style={{ marginTop: 4 }}>

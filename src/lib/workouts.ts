@@ -12,11 +12,15 @@ async function finishedWorkouts(): Promise<Workout[]> {
   return db.workouts.filter((w) => !!w.endedAt).toArray();
 }
 
-/** Bouwt een oefenblok met sets die al zijn ingevuld volgens de progressie-engine. */
+/**
+ * Bouwt een oefenblok met sets die al zijn ingevuld volgens de progressie-engine.
+ * Met `hold` kiest de engine voor vasthouden in plaats van verhogen.
+ */
 export async function buildExercise(
   exercise: Exercise,
   plan?: ExercisePlan,
   history?: Workout[],
+  hold = false,
 ): Promise<WorkoutExercise> {
   // Hooguit één automatische opwarmset; die rekent mee zodra het werkgewicht bekend is.
   const withPlan = (block: WorkoutExercise): WorkoutExercise => {
@@ -42,10 +46,13 @@ export async function buildExercise(
     repMin: plan?.repMin,
     repMax: plan?.repMax,
     plannedRpe: plan?.rpe != null ? { early: plan.rpe, last: plan.lastSetRpe ?? plan.rpe } : undefined,
+    hold,
   });
   return withPlan({
     exerciseId: exercise.id,
     suggestion: `${s.action}|${s.explanation}|${targetSummary(s.targets, plan?.repMin ?? exercise.repMin, plan?.repMax ?? exercise.repMax)}`,
+    ...(s.targets[0] ? { target: { ...s.targets[0] } } : {}),
+    ...(hold ? { held: true } : {}),
     sets: s.targets.map((t) => ({ weight: t.weight, reps: t.reps, type: 'normal', done: false })),
   });
 }

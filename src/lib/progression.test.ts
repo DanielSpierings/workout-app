@@ -32,11 +32,73 @@ describe('suggestProgression', () => {
     expect(s.targets[0].weight).toBeNull();
   });
 
-  it('voegt herhalingen toe binnen het bereik', () => {
+  it('voegt herhalingen toe binnen het bereik, gelijk voor alle sets (laagste set +1)', () => {
     const s = suggestProgression(bench, [session(3, 80, [8, 7, 7])], opts);
     expect(s.action).toBe('reps');
-    expect(s.targets.map((t) => t.reps)).toEqual([9, 8, 8]);
+    expect(s.targets.map((t) => t.reps)).toEqual([8, 8, 8]);
     expect(s.targets.every((t) => t.weight === 80)).toBe(true);
+  });
+
+  describe('één doel voor alle sets', () => {
+    const range = { ...bench, repMin: 8, repMax: 12 };
+    const withTarget = (reps: number[], target: number, weight = 80) => ({ ...session(3, weight, reps), target: { weight, reps: target } });
+
+    it('doel 10, gedaan 10/10/11 → 11/11/11', () => {
+      const s = suggestProgression(range, [withTarget([10, 10, 11], 10)], opts);
+      expect(s.action).toBe('reps');
+      expect(s.targets.map((t) => t.reps)).toEqual([11, 11, 11]);
+    });
+
+    it('doel 10, gedaan 11/11/11 → 12/12/12', () => {
+      const s = suggestProgression(range, [withTarget([11, 11, 11], 10)], opts);
+      expect(s.targets.map((t) => t.reps)).toEqual([12, 12, 12]);
+    });
+
+    it('doel niet gehaald (10/10/8) → doel blijft 10', () => {
+      const s = suggestProgression(range, [withTarget([10, 10, 8], 10)], opts);
+      expect(s.action).toBe('hold');
+      expect(s.targets.map((t) => t.reps)).toEqual([10, 10, 10]);
+      expect(s.explanation).toContain('niet op alle sets 10');
+    });
+
+    it('negeert het vorige doel als dat op een ander gewicht was', () => {
+      const s = suggestProgression(range, [{ ...session(3, 80, [10, 10, 8]), target: { weight: 77.5, reps: 10 } }], opts);
+      expect(s.targets.map((t) => t.reps)).toEqual([9, 9, 9]);
+    });
+
+    it('houdt bij te zware RPE het laagste aantal vast, voor alle sets gelijk', () => {
+      const s = suggestProgression(range, [session(3, 80, [11, 10, 10], 10)], opts);
+      expect(s.action).toBe('hold');
+      expect(s.targets.map((t) => t.reps)).toEqual([10, 10, 10]);
+    });
+
+    it('verhoogt het gewicht nog steeds pas als alle sets de bovengrens halen', () => {
+      const s = suggestProgression(range, [withTarget([12, 12, 11], 11)], opts);
+      expect(s.action).toBe('reps');
+      expect(s.targets.map((t) => t.reps)).toEqual([12, 12, 12]);
+    });
+  });
+
+  describe('zonder RPE: zelf vasthouden', () => {
+    it('houdt vast als de oefening als zwaar is gemarkeerd', () => {
+      const s = suggestProgression(bench, [{ ...session(3, 80, [10, 10, 10]), hard: true }], opts);
+      expect(s.action).toBe('hold');
+      expect(s.targets[0]).toEqual({ weight: 80, reps: 10 });
+      expect(s.explanation).toContain('als zwaar');
+    });
+
+    it('voegt geen herhalingen toe na een zware sessie', () => {
+      const s = suggestProgression(bench, [{ ...session(3, 80, [8, 8, 7]), hard: true }], opts);
+      expect(s.action).toBe('hold');
+      expect(s.targets.map((t) => t.reps)).toEqual([7, 7, 7]);
+    });
+
+    it('houdt vast als je daar zelf voor kiest, zonder onder het vorige doel te zakken', () => {
+      const s = suggestProgression(bench, [{ ...session(3, 80, [9, 9, 8]), target: { weight: 80, reps: 9 } }], { ...opts, hold: true });
+      expect(s.action).toBe('hold');
+      expect(s.targets.map((t) => t.reps)).toEqual([9, 9, 9]);
+      expect(s.explanation).toContain('Je koos ervoor vast te houden');
+    });
   });
 
   it('verhoogt het gewicht (bovenlichaam ~2,5%, min. één stap) bij de bovengrens', () => {

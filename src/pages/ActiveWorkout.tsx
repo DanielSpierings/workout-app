@@ -4,7 +4,7 @@ import { db } from '../db';
 import type { Exercise, SetType, Settings, Workout, WorkoutExercise, WorkoutSet } from '../types';
 import { confirmDialog } from '../components/Confirm';
 import { ExercisePicker } from '../components/ExercisePicker';
-import { IconCheck, IconChevronDown, IconClock, IconDots, IconPlus, IconTrash } from '../components/Icons';
+import { IconCheck, IconChevronDown, IconClock, IconDots, IconFlame, IconPlus, IconTrash } from '../components/Icons';
 import { RestSheet } from '../components/RestSheet';
 import { RestTimer, type RestState } from '../components/RestTimer';
 import { SetEditor } from '../components/SetEditor';
@@ -135,6 +135,25 @@ export function ActiveWorkout({ initial, settings, onFinished }: { initial: Work
     update((prev) => ({ ...prev, exercises: [...prev.exercises, ...blocks] }));
   };
 
+  // Advies opnieuw laten berekenen, met of zonder vasthouden. Alleen zolang er nog niets is afgevinkt.
+  const rebuild = async (i: number, hold: boolean) => {
+    const block = w.exercises[i];
+    const ex = byId.get(block.exerciseId);
+    if (!ex || block.sets.some((s) => s.done)) return;
+    const fresh = await buildExercise(ex, block.plan, undefined, hold);
+    // Opwarmsets blijven zoals ze waren en rekenen mee met het nieuwe werkgewicht.
+    updateExercise(i, (x) => {
+      const sets = [...x.sets.filter((s) => s.type === 'warmup'), ...fresh.sets.filter((s) => s.type !== 'warmup')];
+      return { ...x, suggestion: fresh.suggestion, target: fresh.target, held: fresh.held, sets: syncWarmups(sets, ex) };
+    });
+  };
+
+  const toggleHard = (i: number) => {
+    const hard = !w.exercises[i].hard;
+    updateExercise(i, (x) => ({ ...x, hard: hard || undefined }));
+    if (hard) toast('Gemarkeerd als zwaar: volgende keer houdt de app vast');
+  };
+
   const move = (i: number, d: number) =>
     update((prev) => {
       const list = [...prev.exercises];
@@ -241,6 +260,9 @@ export function ActiveWorkout({ initial, settings, onFinished }: { initial: Work
                 <button className="rest-chip" onClick={() => setRestFor(i)} aria-label="Rusttijd aanpassen">
                   <IconClock size={16} /> {formatClock(r.seconds)}{r.kind === 'between' ? ' tot volgende' : r.kind === 'round' ? ' na ronde' : ''}
                 </button>
+                <button className={`rest-chip hard ${e.hard ? 'on' : ''}`} onClick={() => toggleHard(i)} aria-pressed={!!e.hard}>
+                  <IconFlame size={16} /> Voelde zwaar
+                </button>
                 {e.plan && <span className="small muted">{describePlan(e.plan, ex, { rest: false, warmup: false })}</span>}
               </div>
               {(explanation || e.plan?.notes) && (
@@ -255,6 +277,9 @@ export function ActiveWorkout({ initial, settings, onFinished }: { initial: Work
                     <div className="detail">
                       {explanation && <p>{explanation}</p>}
                       {e.plan?.notes && <p>{e.plan.notes}</p>}
+                      {!e.sets.some((s) => s.done) && (e.held
+                        ? <button className="btn small" onClick={() => void rebuild(i, false)}>Advies terugzetten</button>
+                        : (action === 'increase' || action === 'reps') && <button className="btn small" onClick={() => void rebuild(i, true)}>Liever vasthouden</button>)}
                     </div>
                   )}
                 </div>

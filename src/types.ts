@@ -41,6 +41,12 @@ export interface WorkoutExercise {
   suggestion?: string;
   /** Planning uit de template (rust, superset, doel-RPE), meegenomen in de workout. */
   plan?: ExercisePlan;
+  /** Doel van de progressie-engine bij de start; haal je het niet, dan blijft het doel staan. */
+  target?: { weight: number | null; reps: number };
+  /** Zelf gekozen om vast te houden in plaats van het advies te volgen. */
+  held?: boolean;
+  /** Zelf gemarkeerd als zwaar; de engine houdt de volgende keer vast. */
+  hard?: boolean;
 }
 
 export interface Workout {

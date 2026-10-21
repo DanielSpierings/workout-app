@@ -195,6 +195,10 @@ nav.tabbar button.on { color: var(--accent-text); }
 .meta-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .rest-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 9999px; padding: 2px 10px 2px 6px; font-size: 13px; color: var(--text); background: transparent; cursor: pointer; min-height: 30px; }
 .rest-chip svg { color: var(--icon); }
+.rest-chip.hard { color: var(--muted); }
+.rest-chip.hard.on { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+.rest-chip.hard.on svg { color: var(--warn); }
+.suggestion .detail .btn { margin-top: 2px; }
 
 .suggestion { margin: 8px 0 4px; border-radius: 12px; background: var(--accent-soft); font-size: 14px; overflow: hidden; }
 .suggestion.increase { background: var(--good-soft); }

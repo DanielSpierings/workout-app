@@ -29,6 +29,10 @@ export interface ExerciseSession {
   bestE1rm: number;
   topWeight: number;
   volume: number;
+  /** Doel van de engine voor deze sessie, als dat bekend is. */
+  target?: { weight: number | null; reps: number };
+  /** Door jezelf gemarkeerd als zwaar. */
+  hard?: boolean;
 }
 
 /** Alle afgeronde sessies van één oefening, oudste eerst. */
@@ -47,6 +51,8 @@ export function exerciseSessions(workouts: Workout[], exerciseId: string): Exerc
         bestE1rm: Math.max(...sets.map((s) => e1rm(s.weight ?? 0, s.reps ?? 0))),
         topWeight: Math.max(...sets.map((s) => s.weight ?? 0)),
         volume: sets.reduce((a, s) => a + setVolume(s), 0),
+        ...(e.target ? { target: e.target } : {}),
+        ...(e.hard ? { hard: true } : {}),
       });
     }
   }

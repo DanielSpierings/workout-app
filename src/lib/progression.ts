@@ -6,9 +6,10 @@ import { e1rm, type ExerciseSession } from './stats';
  * Progressive overload-engine: dubbele progressie met RIR-autoregulatie.
  *
  * 1. Werk binnen een herhalingsbereik (bv. 8–12). Zolang je de bovengrens niet
- *    haalt, blijft het gewicht gelijk en probeer je per set één herhaling meer.
- *    Progressie in herhalingen levert vergelijkbare spier- en krachtwinst op als
- *    progressie in gewicht (Plotkin et al., 2022).
+ *    haalt, blijft het gewicht gelijk en krijgen alle sets hetzelfde doel: je
+ *    laagste set van vorige keer + 1. Haalde je het vorige doel niet op alle sets,
+ *    dan blijft dat doel staan. Progressie in herhalingen levert vergelijkbare
+ *    spier- en krachtwinst op als progressie in gewicht (Plotkin et al., 2022).
  * 2. Haal je op alle werksets de bovengrens zonder tot falen te gaan, dan gaat
  *    het gewicht omhoog met ~2,5% (bovenlichaam) of ~5% (onderlichaam), minimaal
  *    één gewichtsstap. Het doelaantal herhalingen op het nieuwe gewicht wordt
@@ -21,6 +22,7 @@ import { e1rm, type ExerciseSession } from './stats';
  * 4. Inspanning wordt gemeten met RPE/RIR (Zourdos et al., 2016; Helms et al.,
  *    2016). Werksets rond 1–3 herhalingen in reserve geven een goede
  *    prikkel/vermoeidheid-verhouding; bij RPE ≥ 9,5 blijft de belasting gelijk.
+ *    Zonder RPE kun je een oefening als "zwaar" markeren; dat telt hetzelfde.
  * 5. Geen vooruitgang in herhalingen over 3 sessies op hetzelfde gewicht, of
  *    twee sessies onder de ondergrens: deload van ~10% en daarna opnieuw opbouwen.
  * 6. Langer dan 4 weken niet gedaan: start op ~90% om weer in te komen.
@@ -50,6 +52,8 @@ export interface ProgressionOptions {
    * (laatste set RPE 10); dan telt alleen RPE die hoger uitvalt dan gepland als "te zwaar".
    */
   plannedRpe?: { early: number; last: number };
+  /** Zelf gekozen om vast te houden in plaats van te verhogen. */
+  hold?: boolean;
   now?: number;
 }
 
@@ -131,9 +135,12 @@ export function suggestProgression(
   const rpe = averageRpe(last, W);
   // Zonder planning: RPE ≥ 9,5 is te zwaar om te verhogen. Met planning: een set die
   // minstens 1 punt zwaarder voelde dan gepland.
-  const tooHard = planned
+  const rpeTooHard = planned
     ? top.some((s, i) => s.rpe != null && s.rpe >= (i === top.length - 1 ? planned.last : planned.early) + 1)
     : rpe != null && rpe >= 9.5;
+  const tooHard = rpeTooHard || !!last.hard || !!opts.hold;
+  // Het doel van vorige keer telt alleen als het op hetzelfde gewicht was.
+  const prevTarget = last.target?.weight != null && same(last.target.weight, W) ? last.target.reps : null;
   const bodyweightOnly = W <= 0;
 
   // Terugkeer na een lange pauze.
@@ -230,18 +237,40 @@ export function suggestProgression(
     };
   }
 
-  // Binnen het bereik → herhalingen erbij.
-  const targets: SetTarget[] = Array.from({ length: setCount }, (_, i) => {
-    const prev = reps[Math.min(i, reps.length - 1)];
-    return { weight: W, reps: tooHard ? prev : Math.min(prev + 1, repMax) };
-  });
+  // Binnen het bereik: één doel voor alle sets, gebaseerd op de zwakste set.
+  // Haalde je het doel van vorige keer niet op alle sets, dan blijft dat doel staan.
+  const weightText = bodyweightOnly ? 'lichaamsgewicht' : fmt(W);
+  const floor = prevTarget ?? 0;
+  if (tooHard) {
+    const holdReps = Math.min(Math.max(minReps, floor), repMax);
+    const why = opts.hold
+      ? 'Je koos ervoor vast te houden.'
+      : rpeTooHard
+        ? `Vorige keer was zwaarder dan gepland (gem. RPE ${fmtRpe(rpe ?? 10)}).`
+        : 'Je markeerde deze oefening vorige keer als zwaar.';
+    return {
+      action: 'hold',
+      targets: repeat(setCount, { weight: W, reps: holdReps }),
+      explanation: `${why} Zelfde gewicht (${weightText}) en ${holdReps} herhalingen per set. ${effortHint}`,
+    };
+  }
+  if (prevTarget != null && minReps < prevTarget) {
+    const goal = Math.min(prevTarget, repMax);
+    return {
+      action: 'hold',
+      targets: repeat(setCount, { weight: W, reps: goal }),
+      explanation:
+        `Vorige keer haalde je niet op alle sets ${goal} herhalingen. Zelfde gewicht (${weightText}) en doel: ` +
+        `probeer nu alle sets op ${goal} te krijgen. ${effortHint}`,
+    };
+  }
+  const goal = Math.min(minReps + 1, repMax);
   return {
-    action: tooHard ? 'hold' : 'reps',
-    targets,
-    explanation: tooHard
-      ? `Vorige keer was zwaarder dan gepland (gem. RPE ${fmtRpe(rpe ?? 10)}). Zelfde gewicht en herhalingen. ${effortHint}`
-      : `Zelfde gewicht (${bodyweightOnly ? 'lichaamsgewicht' : fmt(W)}), één herhaling meer per set ` +
-        `richting ${repMax}. ${effortHint}`,
+    action: 'reps',
+    targets: repeat(setCount, { weight: W, reps: goal }),
+    explanation:
+      `Zelfde gewicht (${weightText}), alle sets op ${goal} herhalingen (je laagste set +1) ` +
+      `richting ${repMax}. ${effortHint}`,
   };
 }
 

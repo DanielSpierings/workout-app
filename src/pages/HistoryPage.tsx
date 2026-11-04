@@ -36,7 +36,7 @@ export function HistoryPage() {
       <header className="page"><h1>Geschiedenis</h1></header>
       {weeklyEntries.length > 0 && (
         <div className="card">
-          <div className="spread"><h3>Sets per spiergroep (7 dagen)</h3><span className="small muted">doel ≥ {WEEKLY_TARGET}</span></div>
+          <div className="spread"><h3>Sets per spiergroep (deze week)</h3><span className="small muted">doel ≥ {WEEKLY_TARGET}</span></div>
           <div className="volume-bars" style={{ marginTop: 8 }}>
             {weeklyEntries.map(([m, n]) => (
               <div key={m} className="vb">

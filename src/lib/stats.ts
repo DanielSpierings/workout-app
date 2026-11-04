@@ -98,14 +98,20 @@ export function prsInWorkout(workout: Workout, all: Workout[]): { exerciseId: st
   return result;
 }
 
-/** Aantal werksets per spiergroep in de afgelopen `days` dagen. */
+/** Begin van de kalenderweek (maandag 00:00, lokale tijd) waarin `now` valt. */
+export function startOfWeek(now = Date.now()): number {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // getDay(): zondag = 0, maandag = 1
+  return d.getTime();
+}
+
+/** Aantal werksets per spiergroep sinds `from`; standaard de huidige week (maandag t/m zondag). */
 export function setsPerMuscle(
   workouts: Workout[],
   muscleOf: (exerciseId: string) => string | undefined,
-  days = 7,
-  now = Date.now(),
+  from = startOfWeek(),
 ): Record<string, number> {
-  const from = now - days * 86_400_000;
   const out: Record<string, number> = {};
   for (const w of workouts) {
     if (!w.endedAt || w.startedAt < from) continue;

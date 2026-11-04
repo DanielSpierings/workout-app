@@ -26,7 +26,8 @@ De engine (`src/lib/progression.ts`) past **dubbele progressie met RIR-autoregul
 4. **Inspanning.** Vul je RPE in, dan houdt de engine daar rekening mee. Standaard mik je op 2 herhalingen in reserve (RIR), in te stellen van 0 tot 4 (Zourdos et al., 2016; Helms et al., 2016). Zonder RPE tik je bij een oefening op **Voelde zwaar** (tijdens de workout, of achteraf bij de workout in Geschiedenis); de volgende keer houdt de engine dan vast. Vergeten te markeren? Kies bij een advies om te verhogen voor **Liever vasthouden** (zolang je nog geen set hebt afgevinkt).
 5. **Deload.** Drie sessies zonder vooruitgang op hetzelfde gewicht, of twee sessies onder de ondergrens: ~10% lichter en daarna opnieuw opbouwen.
 6. **Terugkeer.** Meer dan 4 weken een oefening niet gedaan? Dan start je op ~90%.
-7. **Volume.** Bij Geschiedenis zie je je werksets per spiergroep in de laatste 7 dagen, met ~10 sets per week als richtlijn (Schoenfeld et al., 2017).
+7. **Eigen geheugen per template.** Dezelfde oefening in verschillende templates (bv. de leg press in Full Body #1 en #2, met een andere doel-RPE of een ander bereik) heeft per template een eigen geschiedenis: het advies en de kolom "vorige keer" kijken alleen naar eerdere keren in die template. De eerste keer in een nieuwe template neemt de app alleen het gewicht van je laatste sessie elders over, op de ondergrens van het bereik. Workouts zonder template gebruiken alle geschiedenis; records en grafieken blijven over alles.
+8. **Volume.** Bij Geschiedenis zie je je werksets per spiergroep in de laatste 7 dagen, met ~10 sets per week als richtlijn (Schoenfeld et al., 2017).
 
 Per oefening kun je bij Oefeningen → Bewerk het herhalingsbereik, de kleinste gewichtsstap en "onderlichaam" aanpassen.
 

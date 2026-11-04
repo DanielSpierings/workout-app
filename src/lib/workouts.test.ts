@@ -55,3 +55,41 @@ describe('advies bij het starten', () => {
     expect(block.sets.map((s) => s.reps)).toEqual([10, 10, 10]);
   });
 });
+
+describe('eigen geheugen per template', () => {
+  const legPress: Exercise = { id: 'lp', name: 'Leg Press', muscle: 'quads', equipment: 'machine', lowerBody: true, repMin: 6, repMax: 8 };
+  const day = 86_400_000;
+  const work = (b: { sets: WorkoutSet[] }) => b.sets.filter((s) => s.type !== 'warmup');
+  const lp = (weight: number, r: number[], rpe?: number): WorkoutSet[] => r.map((n) => ({ weight, reps: n, rpe, type: 'normal', done: true }));
+  const session = (id: string, templateId: string | undefined, daysAgo: number, sets: WorkoutSet[], target?: { weight: number; reps: number }): Workout => ({
+    id, name: templateId === 'fb1' ? 'Full Body #1' : templateId === 'fb2' ? 'Full Body #2' : 'Vrije workout',
+    templateId, startedAt: Date.now() - daysAgo * day, endedAt: Date.now() - daysAgo * day + 3_600_000,
+    exercises: [{ exerciseId: 'lp', sets, ...(target ? { target } : {}) }],
+  });
+  const fb2Plan = { sets: 3, repMin: 6, repMax: 8, rpe: 7, lastSetRpe: 8 };
+
+  it('kijkt alleen naar eerdere keren in dezelfde template', async () => {
+    const history = [
+      session('a', 'fb2', 5, lp(130, [7, 7, 7]), { weight: 130, reps: 7 }),
+      session('b', 'fb1', 2, lp(140, [7, 7, 7], 9), { weight: 140, reps: 7 }),
+    ];
+    const block = await buildExercise(legPress, fb2Plan, history, false, 'fb2');
+    expect(work(block).map((s) => [s.weight, s.reps])).toEqual([[130, 8], [130, 8], [130, 8]]);
+    // De andere template blijft ook op zichzelf.
+    const fb1 = await buildExercise(legPress, { ...fb2Plan, rpe: 8, lastSetRpe: 9 }, history, false, 'fb1');
+    expect(work(fb1).every((s) => s.weight === 140)).toBe(true);
+  });
+
+  it('neemt de eerste keer alleen het gewicht van elders over, op de ondergrens', async () => {
+    const history = [session('b', 'fb1', 2, lp(140, [7, 7, 7]), { weight: 140, reps: 7 })];
+    const block = await buildExercise(legPress, fb2Plan, history, false, 'fb2');
+    expect(work(block).map((s) => [s.weight, s.reps])).toEqual([[140, 6], [140, 6], [140, 6]]);
+    expect(block.suggestion).toMatch(/^first\|Eerste keer in deze template\. Startgewicht uit Full Body #1/);
+  });
+
+  it('gebruikt zonder template alle geschiedenis', async () => {
+    const history = [session('a', 'fb2', 5, lp(130, [7, 7, 7])), session('b', 'fb1', 2, lp(140, [7, 7, 7]))];
+    const block = await buildExercise(legPress, undefined, history);
+    expect(work(block).every((s) => s.weight === 140 && s.reps === 8)).toBe(true);
+  });
+});

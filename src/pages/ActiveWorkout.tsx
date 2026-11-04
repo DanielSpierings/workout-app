@@ -13,9 +13,8 @@ import { toast } from '../components/Toast';
 import { formatClock, formatNumber } from '../lib/format';
 import { describePlan, supersetLabel } from '../lib/plan';
 import { unlockAudio } from '../lib/sound';
-import { exerciseSessions } from '../lib/stats';
 import { restAfter, supersetPosition, syncWarmups, warmupSet } from '../lib/training';
-import { buildExercise, finishWorkout } from '../lib/workouts';
+import { buildExercise, finishWorkout, historyFor } from '../lib/workouts';
 
 const TYPE_ORDER: SetType[] = ['normal', 'warmup', 'drop', 'failure'];
 const TYPE_LABEL: Record<SetType, string> = { normal: '', warmup: 'W', drop: 'D', failure: 'F' };
@@ -81,11 +80,13 @@ export function ActiveWorkout({ initial, settings, onFinished }: { initial: Work
     if (!history) return map;
     for (const e of w.exercises) {
       if (map.has(e.exerciseId)) continue;
-      const s = exerciseSessions(history, e.exerciseId);
-      map.set(e.exerciseId, s[s.length - 1]?.sets.filter((x) => x.type !== 'warmup') ?? []);
+      // Vorige keer in dezelfde template; de eerste keer daar de laatste keer elders.
+      const { sessions, elsewhere } = historyFor(history, e.exerciseId, w.templateId);
+      const last = sessions[sessions.length - 1] ?? elsewhere;
+      map.set(e.exerciseId, last?.sets.filter((x) => x.type !== 'warmup') ?? []);
     }
     return map;
-  }, [history, w.exercises]);
+  }, [history, w.exercises, w.templateId]);
 
   const updateExercise = (i: number, fn: (e: WorkoutExercise) => WorkoutExercise) =>
     update((prev) => ({ ...prev, exercises: prev.exercises.map((e, j) => (j === i ? fn(e) : e)) }));
@@ -130,7 +131,7 @@ export function ActiveWorkout({ initial, settings, onFinished }: { initial: Work
     const blocks: WorkoutExercise[] = [];
     for (const id of ids) {
       const ex = await db.exercises.get(id);
-      if (ex) blocks.push(await buildExercise(ex));
+      if (ex) blocks.push(await buildExercise(ex, undefined, undefined, false, w.templateId));
     }
     update((prev) => ({ ...prev, exercises: [...prev.exercises, ...blocks] }));
   };
@@ -140,7 +141,7 @@ export function ActiveWorkout({ initial, settings, onFinished }: { initial: Work
     const block = w.exercises[i];
     const ex = byId.get(block.exerciseId);
     if (!ex || block.sets.some((s) => s.done)) return;
-    const fresh = await buildExercise(ex, block.plan, undefined, hold);
+    const fresh = await buildExercise(ex, block.plan, undefined, hold, w.templateId);
     // Opwarmsets blijven zoals ze waren en rekenen mee met het nieuwe werkgewicht.
     updateExercise(i, (x) => {
       const sets = [...x.sets.filter((s) => s.type === 'warmup'), ...fresh.sets.filter((s) => s.type !== 'warmup')];

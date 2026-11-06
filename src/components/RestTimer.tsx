@@ -29,14 +29,23 @@ export function RestTimer({ rest, onChange, sound, soundKind, next }: {
   }, [rest.endsAt]);
 
   const left = (rest.endsAt - now) / 1000;
+  const done = left <= 0;
+
+  // Geluid zodra de tijd om is (één keer per eindtijdstip).
   useEffect(() => {
-    if (left <= 0 && !fired.current) {
+    if (done && !fired.current) {
       fired.current = true;
       if (sound) playSound(soundKind);
-      const t = setTimeout(() => onChange(null), 2500);
-      return () => clearTimeout(t);
     }
-  }, [left, sound, soundKind, onChange]);
+  }, [done, sound, soundKind]);
+
+  // Venster kort na afloop automatisch sluiten. Hangt af van `done` (niet van `left`),
+  // zodat de tik elke 250 ms deze timeout niet steeds wist.
+  useEffect(() => {
+    if (!done) return;
+    const t = setTimeout(() => onChange(null), 2500);
+    return () => clearTimeout(t);
+  }, [done, onChange]);
 
   const adjust = (d: number) => onChange({ endsAt: rest.endsAt + d * 1000, total: Math.max(rest.total + d, 1) });
   const fraction = Math.max(0, Math.min(1, left / rest.total));
